@@ -1410,7 +1410,7 @@ const RGR_CIRCUIT = [
   { name: '800M RUN',                 detail: 'boots + ACUs (or pants) once a week' },
   { name: 'DEAD-STOP PUSH-UPS',       detail: '30 — chest to ground, hands lift' },
   { name: '100M SPRINT',              detail: 'all out' },
-  { name: 'SANDBAG LIFTS',            detail: '16 x 40 lb onto a ~68" ledge (or overhead to lockout)' },
+  { name: 'DB CLEAN + PRESS',         detail: '16 x 40 lb DB or KB, ground → shoulder → overhead (stands in for the test\'s sandbag lift)' },
   { name: 'FARMER CARRY',             detail: '50m — 2 x 40 lb (water cans, KBs or DBs)' },
   { name: 'HIGH CRAWL + RUSH',        detail: '25m high crawl, then 25m of 3-5 sec rushes' },
   { name: '800M RUN',                 detail: 'finish strong' },
@@ -1465,7 +1465,7 @@ function getRgrData(w) {
     d.monday = { day: 'MONDAY', focus: 'STRENGTH A', time: '~45 MIN',
       lifts: [
         rgrLift('TRAP BAR DEADLIFT', w, 'The ruck lift. Brace, push the floor away.'),
-        { name: 'SANDBAG / DB CLEAN TO SHOULDER', note: 'Ground to shoulder, alternate sides — the sandbag-lift station.', sets: w === 7 ? '2' : '4', reps: w >= 5 ? '8 ea' : '6 ea', lbs: w >= 5 ? '50-60' : '40', rest: '90 SEC' },
+        { name: 'DB / KB CLEAN TO SHOULDER', note: 'Ground to shoulder, alternate sides — stands in for the test\'s sandbag lift.', sets: w === 7 ? '2' : '4', reps: w >= 5 ? '8 ea' : '6 ea', lbs: w >= 5 ? '50-60' : '40', rest: '90 SEC' },
         { name: 'DEAD-STOP PUSH-UPS', ss: 'R', ssPos: 'first', note: 'Same reps every set. Quit before form does.', sets: w === 7 ? '3' : '4', reps: rgrPct('pushups', w <= 4 ? 0.5 : w === 7 ? 0.4 : 0.6, '15'), lbs: 'BW' },
         { name: 'CHIN-UPS (DEAD HANG)', ss: 'R', ssPos: 'last', note: 'Full hang every rep.', sets: w === 7 ? '3' : '4', reps: rgrPct('chins', w <= 4 ? 0.6 : w === 7 ? 0.5 : 0.7, '4'), lbs: 'BW' },
         { name: 'FARMER CARRY', note: 'The water-can station.', sets: '4', reps: '50m', lbs: w <= 4 ? '2x40' : w === 7 ? '2x40' : '2x50', rest: '60 SEC' },
@@ -1524,9 +1524,11 @@ function getRgrData(w) {
       { name: 'PLANK + SIDE PLANK', detail: '2 rounds' },
     ] };
 
-  // FRIDAY — OFF
-  d.friday = { day: 'FRIDAY', focus: 'OFF', time: 'OPTIONAL',
-    recovery: ['Off. You earned it.', 'Optional: 20-30 min walk', '10 min mobility: hips, calves, feet', 'Pool access? 15-20 min swim or tread — water confidence for the swim test'] };
+  // FRIDAY — OFF (build weeks: an earned add-on, never a default)
+  const earned = wk.type === 'BUILD';
+  d.friday = { day: 'FRIDAY', focus: earned ? 'OFF · EARNED RUN' : 'OFF', time: 'OPTIONAL',
+    recovery: (earned ? ['EARNED ONLY — Thursday felt easy AND feet/knees 3/10 or better: 30-40 min easy run (' + rgrEasy().replace('Easy = ', '').replace('.', '') + ')'] : [])
+      .concat(['Otherwise off. You earned it.', 'Optional: 20-30 min walk', '10 min mobility: hips, calves, feet', 'Pool access? 15-20 min swim or tread — water confidence for the swim test']) };
 
   // SATURDAY — RUCK
   const r = RGR_RUCK[w - 1];
