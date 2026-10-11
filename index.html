@@ -439,8 +439,8 @@
     .block-badge { font-size: 0.9rem; }
 
     /* Program switcher — full width */
-    .program-switcher { flex: 1; }
-    .prog-tab { font-size: 0.75rem; padding: 6px 10px; flex: 1; }
+    .program-switcher { flex: 1 1 100%; }
+    .prog-tab { font-size: 0.75rem; padding: 6px 4px; flex: 1; white-space: nowrap; letter-spacing: 1px; }
 
     /* Block nav — smaller buttons */
     .block-nav { flex-wrap: wrap; }
@@ -620,6 +620,19 @@
   }
 
 
+  /* Hybrid Warrior II — your numbers */
+  .hw2-numbers { background: var(--panel); border: 1px solid var(--border); border-left: 3px solid var(--olive-light); margin-bottom: 20px; }
+  .hw2-numbers summary { cursor: pointer; padding: 12px 16px; font-family: 'Share Tech Mono', monospace; font-size: 0.7rem; letter-spacing: 2px; color: var(--yellow); }
+  .hw2-num-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; padding: 4px 16px 4px; }
+  .hw2-num { display: flex; flex-direction: column; gap: 3px; }
+  .hw2-num span { font-family: 'Bebas Neue', sans-serif; font-size: 0.95rem; letter-spacing: 2px; color: var(--white); }
+  .hw2-num input { background: rgba(255,255,255,0.04); border: 1px solid var(--border); color: var(--yellow); font-family: 'Share Tech Mono', monospace; font-size: 0.95rem; padding: 6px 8px; outline: none; width: 100%; }
+  .hw2-num input:focus { border-color: var(--yellow); }
+  .hw2-num em { font-style: normal; font-size: 0.65rem; color: var(--text-dim); letter-spacing: 1px; }
+  .hw2-num-foot { padding: 10px 16px 14px; font-size: 0.75rem; color: var(--text-dim); letter-spacing: 0.5px; line-height: 1.5; }
+  .section > .hw2-num-foot { padding: 8px 2px 0; }
+  @media (max-width: 640px) { .hw2-num-grid { grid-template-columns: 1fr 1fr; } }
+
   /* actual-performed log input */
   .actual-input {
     display: block;
@@ -682,11 +695,12 @@
     <div class="header-sub" id="header-sub">// HYBRID WARRIOR PROGRAM — 12-WEEK CYCLE</div>
   </div>
   <div class="header-right">
-    <div class="block-badge">BLOCK <span id="block-display">1</span> &mdash; <span id="pct-display">60%</span></div>
+    <div class="block-badge"><b id="block-word" style="font-weight:normal">BLOCK</b> <span id="block-display">1</span> &mdash; <span id="pct-display">60%</span></div>
     <div style="display:flex;gap:8px;align-items:center;">
       <div class="program-switcher">
-        <button class="prog-tab active" onclick="setProgram('hybrid')">HYBRID WARRIOR</button>
-        <button class="prog-tab" onclick="setProgram('bct')">BODYBUILDING +</button>
+        <button class="prog-tab" data-prog="hw2" onclick="setProgram('hw2')">HYBRID WARRIOR II</button>
+        <button class="prog-tab" data-prog="hybrid" onclick="setProgram('hybrid')">CYCLE 1</button>
+        <button class="prog-tab" data-prog="bct" onclick="setProgram('bct')">BODYBUILDING +</button>
       </div>
       <div class="block-nav" id="block-nav"></div>
     </div>
@@ -703,12 +717,12 @@
       <div class="progress-bar-wrap"><div class="progress-bar-fill" id="progress-bar" style="width:12.5%"></div></div>
     </div>
     <div class="progress-card">
-      <div class="progress-card-label">// intensity</div>
+      <div class="progress-card-label" id="progress-card-2-label">// intensity</div>
       <div class="progress-card-value" id="intensity-val">60 <span>%</span></div>
       <div class="progress-bar-wrap"><div class="progress-bar-fill" id="intensity-bar" style="width:60%"></div></div>
     </div>
     <div class="progress-card" id="prog-card-3">
-      <div class="progress-card-label">// acft target</div>
+      <div class="progress-card-label" id="prog-card-3-label">// acft target</div>
       <div class="progress-card-value" id="prog-card-3-val">2MI <span>RUN</span></div>
       <div class="progress-bar-wrap"><div class="progress-bar-fill" id="prog-card-3-bar" style="width:30%; background: var(--olive-light);"></div></div>
     </div>
@@ -783,16 +797,20 @@ function pyramidSets(topWeight, sets) {
 
 let savedPosition = {};
 try { savedPosition = JSON.parse(localStorage.getItem('zach-position') || '{}'); } catch(e) { savedPosition = {}; }
-let currentProgram = savedPosition.program || 'hybrid';
-// Week 1 Monday of the current 12-week cycle. New cycle → change this date.
-const CYCLE_START = new Date(2026, 7, 3); // Mon Aug 3, 2026
+let currentProgram = savedPosition.program || 'hw2';
+// One time only: Hybrid Warrior II becomes the program you open on
+try { if (!localStorage.getItem('hw2-default')) { currentProgram = 'hw2'; localStorage.setItem('hw2-default', '1'); } } catch(e) {}
+// Week 1 Monday of each 12-week cycle. New cycle → add a new start date.
+const CYCLE_START = new Date(2026, 7, 3); // Cycle 1 + Bodybuilding: Mon Aug 3, 2026
+const HW2_START = new Date(2026, 9, 12);  // Hybrid Warrior II: Mon Oct 12, 2026
+function cycleStart() { return currentProgram === 'hw2' ? HW2_START : CYCLE_START; }
 const WEEKDAYS = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
 function todayKey() { const n = new Date(); return n.getFullYear() + '-' + n.getMonth() + '-' + n.getDate(); }
 // Today's week (0-11, held at Week 1 before the start and Week 12 after the end) and weekday
 function todayPosition() {
   const n = new Date();
   const today = new Date(n.getFullYear(), n.getMonth(), n.getDate());
-  const days = Math.round((today - CYCLE_START) / 86400000);
+  const days = Math.round((today - cycleStart()) / 86400000);
   return { block: Math.min(11, Math.max(0, Math.floor(days / 7))), day: WEEKDAYS[n.getDay()] };
 }
 let currentBlock = todayPosition().block;
@@ -1287,6 +1305,419 @@ function getHybridData(block) {
   };
 }
 // ============================================================
+// HYBRID WARRIOR II — CYCLE 2 (Mon Oct 12, 2026 → Sun Jan 3, 2027)
+// ============================================================
+// Built around the school year: the main session lives in the early gym
+// window (~60-70 min), Monday afternoon is Future Soldier PT, Tuesday
+// afternoon is coaching RHS BCT. Hybrid = 4 runs + 3 lifts a week, hard days
+// hard and easy days easy. Every lift and run points at the Army Fitness Test
+// (3RM deadlift, hand-release push-ups, sprint-drag-carry, plank, 2-mile).
+const HW2_WEEKS = [
+  { type: 'TEST',   tag: 'BASELINE TESTS',            note: 'Test week. Log every result in YOUR NUMBERS — the rest of the cycle is built from them.' },
+  { type: 'TRAVEL', tag: 'CONFERENCE — HOTEL WEEK',   note: 'Art conference Mon–Thu. Hotel-room sessions, 30 min. Do not make up missed work.' },
+  { type: 'BUILD',  tag: 'BUILD I',                   note: 'Build I starts. Loads are moderate on purpose — leave 2 reps in the tank.' },
+  { type: 'BUILD',  tag: 'BUILD I',                   note: 'Same structure, a little more. Hit the paces, not more than the paces.' },
+  { type: 'BUILD',  tag: 'BUILD I',                   note: 'Heavier triples. Speed stays crisp — if the 400s slow down, stop the set.' },
+  { type: 'BUILD',  tag: 'BUILD I — PEAK',            note: 'Hardest week of Build I. Sleep is part of the program this week.' },
+  { type: 'DELOAD', tag: 'THANKSGIVING DELOAD',       note: 'Deload + holiday. Less volume, same habits. Turkey is not a rest day for walking.' },
+  { type: 'BUILD',  tag: 'BUILD II',                  note: 'Build II. Runs get longer, rucks get heavier.' },
+  { type: 'BUILD',  tag: 'BUILD II',                  note: 'Interval pace drops 2 sec per 400. Long run finishes at tempo.' },
+  { type: 'BUILD',  tag: 'BUILD II — PEAK',           note: 'Heaviest lifts and longest ruck of the cycle.' },
+  { type: 'BUILD',  tag: 'SHARPEN',                   note: 'Volume comes down, intensity stays. Show up fresh for test week.' },
+  { type: 'TEST',   tag: 'RETEST — WINTER BREAK',     note: 'Retest. Same tests as Week 1 — compare and set the numbers for Cycle 3.' },
+];
+
+// Your numbers. Defaults come from Cycle 1's working loads; Week 1 tests replace them.
+const HW2_NUM_DEFAULTS = { twoMile: '', hrp: '', dl3: '275', squat: '295', bench: '215', ohp: '135' };
+const HW2_NUM_FIELDS = [
+  { k: 'twoMile', label: '2-MILE TIME',        hint: 'mm:ss — Week 1 Tuesday' },
+  { k: 'hrp',     label: 'HAND-RELEASE PUSH-UPS', hint: '2-min max — Week 1 Monday' },
+  { k: 'dl3',     label: 'HEX BAR DEADLIFT 3RM', hint: 'lbs — Week 1 Monday' },
+  { k: 'squat',   label: 'SQUAT WORKING MAX',  hint: 'lbs — ~90% of your true max' },
+  { k: 'bench',   label: 'BENCH WORKING MAX',  hint: 'lbs — ~90% of your true max' },
+  { k: 'ohp',     label: 'PRESS WORKING MAX',  hint: 'lbs — ~90% of your true max' },
+];
+let hw2Num = Object.assign({}, HW2_NUM_DEFAULTS);
+try { Object.assign(hw2Num, JSON.parse(localStorage.getItem('hw2-numbers') || '{}')); } catch(e) {}
+function saveHW2Num(k, el) {
+  hw2Num[k] = el.value.trim();
+  try { localStorage.setItem('hw2-numbers', JSON.stringify(hw2Num)); } catch(e) {}
+  hw2NumOpen = true;
+  updateProgressCards();
+  renderWorkout();
+}
+let hw2NumOpen = null;  // null = decide by whether the 2-mile time is set
+
+function r5(x) { return Math.round(x / 5) * 5; }
+function hw2Max(k) { const n = parseFloat(hw2Num[k]); return n > 0 ? n : parseFloat(HW2_NUM_DEFAULTS[k]); }
+function parseMMSS(s) { const m = /^(\d{1,2}):([0-5]\d)$/.exec(String(s || '').trim()); return m ? (+m[1]) * 60 + (+m[2]) : null; }
+function fmtMMSS(sec) { sec = Math.round(sec); return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0'); }
+
+// Paces from your 2-mile. Cycle goal = ~7% faster, never slower than the 18:00
+// target; once you are under 18:00 the goal is another 3%.
+function hw2Paces() {
+  const t = parseMMSS(hw2Num.twoMile);
+  if (!t) return null;
+  const goal = t <= 1080 ? Math.round(t * 0.97) : Math.max(1080, Math.round(t * 0.93));
+  const goalMi = goal / 2, curMi = t / 2;
+  return { current: t, goal: goal, goalMi: goalMi, tempoMi: curMi + 20, easyLo: curMi + 90, easyHi: curMi + 150 };
+}
+function repPace(meters, fasterPer400) {
+  const p = hw2Paces();
+  if (!p) return 'at 2-mile goal effort (log your Week 1 2-mile to get exact splits)';
+  return '@ ' + fmtMMSS(p.goalMi * meters / 1609.34 - (fasterPer400 || 0) * meters / 400) + ' each (goal pace ' + fmtMMSS(p.goalMi) + '/mi)';
+}
+function easyPace() {
+  const p = hw2Paces();
+  return p ? 'Easy = ' + fmtMMSS(p.easyLo) + '–' + fmtMMSS(p.easyHi) + '/mi or HR under 150. Conversational.' : 'Easy = conversational, HR under 150.';
+}
+function tempoPace() {
+  const p = hw2Paces();
+  return p ? 'tempo ≈ ' + fmtMMSS(p.tempoMi) + '/mi (comfortably hard)' : 'tempo (comfortably hard — can say short sentences)';
+}
+
+// Main-lift wave by week: [sets, reps, % of max]. Test, travel and deload weeks are separate.
+const HW2_WAVE = { 3: [4, 5, 70], 4: [4, 5, 75], 5: [5, 3, 80], 6: [5, 3, 85], 7: [3, 5, 65], 8: [4, 4, 80], 9: [5, 3, 85], 10: [4, 2, 90], 11: [3, 3, 80] };
+function waveLift(name, k, w, extra) {
+  const v = HW2_WAVE[w];
+  return Object.assign({ name: name, note: v[2] + '% of ' + hw2Max(k) + ' — every rep the same speed. Last set: 2 reps left in the tank.',
+    sets: String(v[0]), reps: String(v[1]), lbs: String(r5(hw2Max(k) * v[2] / 100)), rest: '2–3 MIN' }, extra || {});
+}
+function hrpReps(w) {
+  const pct = w <= 4 ? 0.5 : w <= 6 ? 0.55 : w === 7 ? 0.4 : w <= 9 ? 0.6 : 0.65;
+  const max = parseInt(hw2Num.hrp, 10);
+  return max > 0 ? String(Math.max(5, Math.round(max * pct))) : Math.round(pct * 100) + '% of max';
+}
+
+// Tuesday quality run: reps of goal 2-mile pace.
+const HW2_INTERVALS = {
+  2:  { reps: 6,  m: 400,  rest: '90 sec walk/jog', note: 'Hotel treadmill is fine — set 1% incline.' },
+  3:  { reps: 8,  m: 400,  rest: '90 sec easy jog' },
+  4:  { reps: 5,  m: 800,  rest: '2 min easy jog' },
+  5:  { reps: 10, m: 400,  rest: '75 sec easy jog' },
+  6:  { reps: 3,  m: 1200, rest: '2:30 easy jog', after: '4 x 200m fast, full walk-back rest' },
+  7:  { reps: 6,  m: 400,  rest: '2 min — DELOAD, smooth not hard' },
+  8:  { reps: 6,  m: 800,  rest: '90 sec easy jog' },
+  9:  { reps: 12, m: 400,  rest: '60 sec', faster: 2 },
+  10: { reps: 2,  m: 1609, rest: '3 min easy jog', label: '1 mile' },
+  11: { reps: 4,  m: 800,  rest: '2 min easy jog', after: '4 x 200m fast, full walk-back rest' },
+};
+const HW2_EASY_MIN = [25, 25, 30, 30, 35, 35, 25, 40, 40, 45, 35, 20];
+const HW2_SATURDAY = [
+  { kind: 'run',  mins: 40, note: 'Bay Fest day — go early.' },
+  { kind: 'ruck', lbs: 30, mi: 3 },
+  { kind: 'run',  mins: 45 },
+  { kind: 'ruck', lbs: 30, mi: 3.5 },
+  { kind: 'run',  mins: 50 },
+  { kind: 'ruck', lbs: 35, mi: 4 },
+  { kind: 'run',  mins: 40, note: 'Thanksgiving weekend. Easy the whole way.' },
+  { kind: 'ruck', lbs: 35, mi: 4.5 },
+  { kind: 'run',  mins: 55, tempo: 10 },
+  { kind: 'ruck', lbs: 40, mi: 5 },
+  { kind: 'run',  mins: 60, tempo: 15 },
+  { kind: 'ruck', lbs: 40, mi: 4, note: 'Test week — keep it easy.' },
+];
+const HW2_ENGINE = {
+  1:  { rounds: 3, moves: ['400m run', '15 KB swings', '10 hand-release push-ups'], note: 'Test week — moderate. Learn the transitions.' },
+  2:  { rounds: 4, moves: ['400m run', '20 walking lunges', '15 KB swings'] },
+  3:  { rounds: 4, moves: ['400m run', '20 KB swings', '10 burpee broad jumps'] },
+  4:  { rounds: 5, moves: ['400m run', '250m row (or 15 cal bike)', '20 walking lunges w/ DBs'] },
+  5:  { rounds: 4, moves: ['600m run', '15 wall balls (or DB thrusters)', '50yd farmer carry'] },
+  6:  { rounds: 5, moves: ['400m run', '20 KB swings', '10 burpee broad jumps', '50yd farmer carry'] },
+  7:  { rounds: 3, moves: ['400m run', '15 KB swings', '10 walking lunges'], note: 'Deload — keep it conversational.' },
+  8:  { rounds: 4, moves: ['800m run', '20 walking lunges w/ DBs', '15 KB swings'] },
+  9:  { rounds: 6, moves: ['400m run', '12 hand-release push-ups', '15 KB swings'] },
+  10: { rounds: 4, moves: ['800m run', '500m row (or 25 cal bike)', '20 wall balls'], note: 'Half-HYROX style. Hardest engine of the cycle.' },
+  11: { rounds: 4, moves: ['400m run', '15 KB swings', '10 burpee broad jumps'], note: 'Short and sharp. Leave fresh.' },
+};
+
+function hw2Core(w) {
+  const s = w <= 6 ? '3' : '2';
+  const pt = w <= 6 ? '45 sec' : '60 sec';
+  return [
+    { name: 'PLANK (AFT)',      detail: s + 'x' + pt + ' — straight line, squeeze glutes' },
+    { name: 'SIDE PLANK',       detail: s + 'x30 sec ea' },
+    { name: 'BACK EXTENSIONS',  detail: s + 'x12 — squeeze at top' },
+    { name: 'DEAD BUGS',        detail: s + 'x8ea — slow, low back down' },
+  ];
+}
+function hotel(items) { return items.map(function(x){ return { name: x[0], detail: x[1] }; }); }
+
+function getHW2Data(w) {
+  const wk = HW2_WEEKS[w - 1];
+  const test = wk.type === 'TEST', travel = wk.type === 'TRAVEL';
+  const sat = HW2_SATURDAY[w - 1];
+  const d = {};
+
+  // MONDAY — STRENGTH A: hinge + push/pull, the AFT strength events
+  if (test) {
+    d.monday = { day: 'MONDAY', focus: 'TEST — DEADLIFT · HRP · PLANK', time: '~60 MIN',
+      lifts: [
+        { name: 'HEX BAR DEADLIFT — 3RM TEST', aft: true, note: 'Work up: 10 @ bar, 5 @ 40%, 3 @ 60%, 2 @ 75%, 1 @ 85%, then up to 3 attempts at a 3-rep max. Log it in YOUR NUMBERS.', sets: 'Build', reps: '3RM', lbs: 'Max', rest: '3 MIN BETWEEN ATTEMPTS' },
+        { name: 'HAND-RELEASE PUSH-UPS — 2 MIN TEST', aft: true, note: 'Rest 5 min after deadlifts. Chest to floor, hands up, full lockout. Log the count.', sets: '1', reps: '2 MIN', lbs: 'BW', rest: '5 MIN BEFORE PLANK' },
+        { name: 'PLANK — MAX HOLD TEST', aft: true, note: 'Forearm plank, one max hold. PR to beat: 2:06.', sets: '1', reps: 'MAX', lbs: 'BW' },
+        { name: 'PULL-UPS', note: 'Not tested — just get work in.', sets: '3', reps: 'Max-2', lbs: 'BW' },
+      ],
+      pm: 'Future Soldier PT. Go at their pace — you tested this morning.' };
+  } else if (travel) {
+    d.monday = { day: 'MONDAY', focus: 'HOTEL — LEGS + PUSH', time: '~30 MIN',
+      circuit: { title: 'HOTEL CIRCUIT A — 4 ROUNDS', items: hotel([
+        ['HAND-RELEASE PUSH-UPS', hrpReps(4) + ' reps'], ['SPLIT SQUATS (BACK FOOT ON BED)', '12ea'],
+        ['SINGLE-LEG RDL', '10ea, slow'], ['TOWEL / DOOR ROWS', '12'], ['PLANK', '45 sec']]),
+        note: 'Rest 60–90 sec between rounds. Done in 30.' } };
+  } else {
+    d.monday = { day: 'MONDAY', focus: 'STRENGTH A — HINGE', time: '~60 MIN',
+      lifts: [
+        waveLift('HEX BAR DEADLIFT', 'dl3', w, { aft: true }),
+        { name: 'REAR-FOOT ELEVATED SPLIT SQUAT', note: 'DBs at your sides. Knee tracks over toes.', sets: w === 7 ? '2' : '3', reps: w >= 8 ? '6ea' : '8ea', lbs: w >= 8 ? '50-60' : '35-50', rest: '90 SEC' },
+        { name: 'HAND-RELEASE PUSH-UPS', aft: true, ss: 'G', ssPos: 'first', note: 'AFT standard. Same reps every set — quit before form does.', sets: w === 7 ? '3' : '4', reps: hrpReps(w), lbs: 'BW' },
+        { name: 'PULL-UPS', ss: 'G', ssPos: 'last', note: 'Strict. Stop 2 short of failure.', sets: w === 7 ? '3' : '4', reps: 'Max-2', lbs: 'BW' },
+        { name: 'FARMER CARRY', aft: true, note: 'Heavy DBs or KBs — this is the carry in sprint-drag-carry.', sets: '4', reps: '40yd', lbs: w <= 6 ? '70ea' : '80ea', rest: '60 SEC' },
+      ],
+      core: hw2Core(w),
+      pm: 'Future Soldier PT = today\'s conditioning. If none this week: 20 min easy.' };
+  }
+
+  // TUESDAY — RUN QUALITY (2-mile speed)
+  if (test) {
+    d.tuesday = { day: 'TUESDAY', focus: 'TEST — 2-MILE RUN', time: '~45 MIN',
+      run: { title: '2-MILE TIME TRIAL', steps: [
+        '10 min easy jog + leg swings, A-skips, 3 x 20 sec strides',
+        '2 MILES ALL-OUT — track or flat road. First lap controlled, last 400 everything.',
+        'Log the time in YOUR NUMBERS — every pace in this cycle comes from it.',
+        '10 min easy walk/jog cool-down'] },
+      pm: 'RHS BCT training — coach it. Your workout is done.' };
+  } else {
+    const iv = HW2_INTERVALS[w];
+    const steps = ['10 min easy jog + drills (A-skips, high knees, butt kicks), 3 x 20 sec strides',
+      iv.reps + ' x ' + (iv.label || iv.m + 'm') + ' ' + repPace(iv.m, iv.faster) + ' — rest ' + iv.rest];
+    if (iv.after) steps.push(iv.after);
+    if (iv.note) steps.push(iv.note);
+    steps.push('10 min easy cool-down jog');
+    d.tuesday = { day: 'TUESDAY', focus: travel ? 'HOTEL — INTERVALS' : 'RUN — 2-MILE SPEED', time: travel ? '~40 MIN' : '~45 MIN',
+      run: { title: 'INTERVALS — ' + iv.reps + ' x ' + (iv.label || iv.m + 'm'), steps: steps },
+      core: travel ? null : [{ name: 'PLANK (AFT)', detail: '2 x max-10 sec' }],
+      pm: travel ? null : 'RHS BCT training — coach it. Demo reps only; your hard work is done.' };
+  }
+
+  // WEDNESDAY — STRENGTH B: press + pull + sprint-drag-carry
+  const sdcRounds = { 3: 2, 4: 2, 5: 3, 6: 3, 7: 1, 8: 3, 9: 3, 10: 4, 11: 2 };
+  if (test) {
+    d.wednesday = { day: 'WEDNESDAY', focus: 'TEST — SPRINT-DRAG-CARRY', time: '~50 MIN',
+      lifts: [
+        { name: 'BENCH PRESS', note: 'Light — test week.', sets: '3', reps: '5', lbs: String(r5(hw2Max('bench') * 0.7)) },
+        { name: 'CHIN-UPS', note: '', sets: '3', reps: 'Max-2', lbs: 'BW' },
+      ],
+      sdc: { rounds: 1, test: true },
+      pm: null };
+  } else if (travel) {
+    d.wednesday = { day: 'WEDNESDAY', focus: 'HOTEL — PUSH + PULL', time: '~30 MIN',
+      circuit: { title: 'HOTEL CIRCUIT B — 4 ROUNDS', items: hotel([
+        ['PIKE PUSH-UPS', '8-10'], ['TOWEL / DOOR ROWS', '12'], ['DIPS OFF A CHAIR', '12'],
+        ['REVERSE LUNGES', '12ea'], ['SIDE PLANK', '30 sec ea']]),
+        note: 'Hotel gym has dumbbells? Swap in DB bench 4x10 + DB rows 4x10ea.' } };
+  } else {
+    d.wednesday = { day: 'WEDNESDAY', focus: 'STRENGTH B — PRESS + SDC', time: '~65 MIN',
+      lifts: [
+        waveLift('BENCH PRESS', 'bench', w),
+        { name: 'CHIN-UPS', note: 'Add weight once every set hits 8.', sets: w === 7 ? '2' : '4', reps: '6-8', lbs: 'BW+', rest: '2 MIN' },
+        { name: 'STANDING OVERHEAD PRESS', ss: 'H', ssPos: 'first', note: '', sets: '3', reps: w >= 8 ? '6' : '8', lbs: String(r5(hw2Max('ohp') * (w >= 8 ? 0.75 : 0.7))) },
+        { name: 'ONE-ARM DB ROW', ss: 'H', ssPos: 'last', note: 'Pause at the top.', sets: '3', reps: '10ea', lbs: '70-90' },
+      ],
+      sdc: { rounds: sdcRounds[w] } };
+  }
+
+  // THURSDAY — EASY RUN + CORE (aerobic base; no afternoon commitment)
+  d.thursday = { day: 'THURSDAY', focus: travel ? 'TRAVEL DAY' : 'EASY RUN + CORE', time: travel ? '~25 MIN' : '~' + (HW2_EASY_MIN[w - 1] + 15) + ' MIN',
+    run: { title: 'EASY RUN — ' + HW2_EASY_MIN[w - 1] + ' MIN', steps: [
+      HW2_EASY_MIN[w - 1] + ' min easy. TIME, not distance. ' + easyPace(),
+      w >= 3 && !test ? 'Finish with 4 x 20 sec strides — fast and relaxed, walk back' : 'No strides this week',
+      'Knees cranky? Same minutes on the bike or incline walk. Swap, don\'t skip.',
+      travel ? 'Travel day — run if you can, otherwise rest. Don\'t make it up.' : 'Can go after school instead — Thursday has nothing in the afternoon.'] },
+    core: travel ? null : hw2Core(w) };
+
+  // FRIDAY — HYBRID ENGINE: squat primer + run/station rounds
+  if (w === 12) {
+    d.friday = { day: 'FRIDAY', focus: 'OFF — NEW YEAR\'S DAY', time: '~20 MIN',
+      run: { title: 'OPTIONAL SHAKEOUT', steps: ['20 min easy walk or jog', '10 min mobility'] } };
+  } else {
+    const eng = HW2_ENGINE[w];
+    d.friday = { day: 'FRIDAY', focus: 'HYBRID ENGINE', time: '~65 MIN',
+      lifts: w === 1 || w === 2
+        ? [{ name: 'BACK SQUAT', note: 'Easy — groove it.', sets: '3', reps: '5', lbs: String(r5(hw2Max('squat') * 0.65)) }]
+        : [waveLift('BACK SQUAT', 'squat', w)],
+      engine: { title: 'ENGINE — ' + eng.rounds + ' ROUNDS FOR TIME', moves: eng.moves,
+        note: (eng.note ? eng.note + ' ' : '') + 'Steady pace you could hold for one more round. Log total time.' } };
+  }
+
+  // SATURDAY — LONG RUN or RUCK (alternating weeks)
+  if (sat.kind === 'run') {
+    const steps = [sat.mins + ' min easy. ' + easyPace()];
+    if (sat.tempo) steps.push('Last ' + sat.tempo + ' min at ' + tempoPace());
+    if (sat.note) steps.push(sat.note);
+    steps.push('Water + electrolytes if over 45 min.');
+    d.saturday = { day: 'SATURDAY', focus: 'LONG RUN', time: '~' + (sat.mins + 10) + ' MIN',
+      run: { title: 'LONG RUN — ' + sat.mins + ' MIN', steps: steps } };
+  } else {
+    const steps = [sat.lbs + ' lb pack · ' + sat.mi + ' miles · aim for 15:00/mi or faster',
+      'Walk fast, don\'t run. Hips and shoulders tight, short quick steps on hills.',
+      'Hot spot on a foot? Stop and fix it right then — that\'s the BCT lesson.'];
+    if (sat.note) steps.push(sat.note);
+    d.saturday = { day: 'SATURDAY', focus: 'RUCK', time: '~' + Math.round(sat.mi * 15 + 10) + ' MIN',
+      run: { title: 'RUCK — ' + sat.lbs + ' LB · ' + sat.mi + ' MI', steps: steps } };
+  }
+  d.saturday.grid = true;
+
+  // SUNDAY — RECOVERY + WEEKLY CHECK-IN
+  d.sunday = { day: 'SUNDAY', focus: 'RECOVERY + CHECK-IN', time: 'ALL DAY',
+    recovery: ['10,000+ steps — easy walk', 'Mobility 15-20 min: hips, hamstrings, T-spine', 'Meal prep for the week', 'Lay out Monday\'s gym bag tonight'],
+    checkin: true };
+
+  Object.keys(d).forEach(function(k){ d[k].week = wk; });
+  return d;
+}
+
+// ── HW2 rendering ──
+function hw2List(items, prefix, kind, title) {
+  let h = '<div class="lt-tracker"><div class="lt-tracker-title">' + title + '</div><div class="lt-sets">';
+  items.forEach(function(c, i) {
+    const key = prefix + '-' + kind + '-' + i;
+    h += '<div class="lt-set"><div class="lt-set-label">' + (i + 1) + '. ' + c.name + '</div>'
+      + '<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;justify-content:flex-end;">'
+      + (c.detail ? '<div class="lt-set-detail">' + c.detail + '</div>' : '')
+      + '<input class="actual-input" placeholder="—" value="' + (actualLog[key] || '') + '" oninput="saveActual(\'' + key + '\', this)">'
+      + '<div class="done-check ' + (checkedState[key] ? 'checked' : '') + '" id="check-' + key + '" onclick="toggleCheck(\'' + key + '\')">' + (checkedState[key] ? '✓' : '') + '</div>'
+      + '</div></div>';
+  });
+  return h + '</div></div>';
+}
+function hw2RunCard(run, prefix) {
+  const key = prefix + '-run';
+  return '<div class="run-card"><div class="run-card-title">' + run.title + '</div><div class="run-intervals">'
+    + run.steps.map(function(s, i) {
+        return '<div class="run-interval"><div class="run-interval-num">0' + (i + 1) + '</div><div class="run-interval-desc">' + s + '</div></div>';
+      }).join('')
+    + '<div class="run-interval"><div class="run-interval-num">⏱</div><div class="run-interval-desc" style="color:var(--text-dim)">LOG — time / splits / how it felt</div>'
+    + '<input class="actual-input" style="width:120px" placeholder="—" value="' + (actualLog[key] || '') + '" oninput="saveActual(\'' + key + '\', this)">'
+    + '<div class="done-check ' + (checkedState[key] ? 'checked' : '') + '" id="check-' + key + '" onclick="toggleCheck(\'' + key + '\')">' + (checkedState[key] ? '✓' : '') + '</div></div>'
+    + '</div></div>';
+}
+function hw2NumbersCard() {
+  const p = hw2Paces();
+  const open = hw2NumOpen === null ? !p : hw2NumOpen;
+  let h = '<details class="hw2-numbers"' + (open ? ' open' : '') + ' ontoggle="hw2NumOpen=this.open">'
+    + '<summary>// YOUR NUMBERS ' + (p ? '— 2-MILE ' + fmtMMSS(p.current) + ' → GOAL ' + fmtMMSS(p.goal) : '— LOG YOUR WEEK 1 TESTS') + '</summary>'
+    + '<div class="hw2-num-grid">';
+  HW2_NUM_FIELDS.forEach(function(f) {
+    h += '<label class="hw2-num"><span>' + f.label + '</span>'
+      + '<input value="' + (hw2Num[f.k] || '') + '" placeholder="' + (f.k === 'twoMile' ? '19:30' : '—') + '" onchange="saveHW2Num(\'' + f.k + '\', this)" inputmode="' + (f.k === 'twoMile' ? 'text' : 'numeric') + '">'
+      + '<em>' + f.hint + '</em></label>';
+  });
+  h += '</div><div class="hw2-num-foot">Every load and pace in Cycle 2 is figured from these. Change one and the whole cycle updates.'
+    + (p ? ' Easy ' + fmtMMSS(p.easyLo) + '–' + fmtMMSS(p.easyHi) + '/mi · tempo ' + fmtMMSS(p.tempoMi) + '/mi · goal ' + fmtMMSS(p.goalMi) + '/mi.' : '')
+    + '</div></details>';
+  return h;
+}
+function hw2SDC(sdc, prefix) {
+  const moves = [
+    { name: 'SPRINT', detail: '50m (25m down + back)' },
+    { name: 'DRAG', detail: '50m backward — sled 90 lb, or plates on a towel' },
+    { name: 'LATERAL', detail: '50m side shuffle — face the same way both legs' },
+    { name: 'CARRY', detail: '50m — two 40 lb KBs' },
+    { name: 'SPRINT', detail: '50m — finish hard' },
+  ];
+  const title = sdc.test ? 'SPRINT-DRAG-CARRY — BASELINE TEST (1 ROUND, LOG TIME)' : 'SPRINT-DRAG-CARRY — ' + sdc.rounds + ' ROUND' + (sdc.rounds > 1 ? 'S' : '') + ', 3 MIN REST';
+  return '<div class="section"><div class="section-label">// aft — sprint-drag-carry</div>' + hw2List(moves, prefix, 'sdc', title) + '</div>';
+}
+function hw2CheckinHistory() {
+  let h = '<div class="section"><div class="section-label">// cycle 2 check-ins</div><div class="mileage-grid">';
+  for (let i = 0; i < 12; i++) {
+    const wt = actualLog['hw2-' + i + '-sunday-checkin-0'] || '—';
+    const ws = actualLog['hw2-' + i + '-sunday-checkin-1'] || '—';
+    h += '<div class="mile-card' + (i === currentBlock ? ' current' : '') + '"><div class="mile-card-week">WK ' + (i + 1) + '</div>'
+      + '<div class="mile-card-dist" style="font-size:0.95rem;">' + wt + '<span>lb</span></div>'
+      + '<div class="mile-card-week" style="margin-top:2px;">' + ws + ' in</div></div>';
+  }
+  return h + '</div></div>';
+}
+
+function updateHW2Cards() {
+  const w = currentBlock + 1, wk = HW2_WEEKS[currentBlock], p = hw2Paces();
+  document.getElementById('block-display').textContent = w;
+  document.getElementById('pct-display').textContent = wk.type;
+  document.getElementById('progress-val').innerHTML = 'WEEK ' + w + ' <span>/ 12</span>';
+  document.getElementById('progress-bar').style.width = (w / 12 * 100) + '%';
+  document.getElementById('progress-card-2-label').textContent = '// phase';
+  document.getElementById('intensity-val').innerHTML = wk.tag.split(' — ')[0];
+  document.getElementById('intensity-bar').style.width = (w / 12 * 100) + '%';
+  document.getElementById('prog-card-3-label').textContent = '// 2-mile goal';
+  document.getElementById('prog-card-3-val').innerHTML = p ? fmtMMSS(p.goal) + ' <span>FROM ' + fmtMMSS(p.current) + '</span>' : 'TEST <span>WK 1</span>';
+  document.getElementById('prog-card-3-bar').style.width = p ? '100%' : '10%';
+}
+
+function renderHW2Workout() {
+  const w = currentBlock + 1;
+  const day = getHW2Data(w)[currentDay];
+  const content = document.getElementById('workout-content');
+  const prefix = 'hw2-' + currentBlock + '-' + currentDay;
+  let html = '';
+
+  const n = new Date(), today = new Date(n.getFullYear(), n.getMonth(), n.getDate());
+  const until = Math.round((HW2_START - today) / 86400000);
+  if (until > 0) {
+    html += '<div class="section"><div class="kb-prime-box"><div class="kb-prime-title">⚡ CYCLE 2 STARTS MON OCT 12 — ' + until + ' DAY' + (until > 1 ? 'S' : '') + ' OUT</div>'
+      + '<div style="font-size:0.85rem;color:var(--text);letter-spacing:0.5px;line-height:1.5;">Week 1 is test week — show up rested. Until Monday: easy runs, walks, mobility. Skip anything heavy so the tests are real.</div></div></div>';
+  }
+  html += hw2NumbersCard();
+  html += '<div class="section"><div class="info-box">WEEK ' + w + ' · ' + day.week.tag + ' · ' + day.time + '<br><span style="color:var(--text-dim)">' + day.week.note + '</span></div></div>';
+
+  if (day.recovery) {
+    html += '<div class="section"><div class="section-label">// recovery</div><div class="cooldown-items">'
+      + day.recovery.map(function(r){ return '<div class="cooldown-item">' + r + '</div>'; }).join('') + '</div></div>';
+    html += '<div class="section"><div class="section-label">// weekly check-in — same scale, same time, before breakfast</div>'
+      + hw2List([{ name: 'WEIGHT (LB)', detail: 'goal: trend down' }, { name: 'WAIST (IN)', detail: 'goal: 38" at the belly button' },
+                 { name: 'KNEES / BODY (1-10)', detail: 'anything nagging?' }], prefix, 'checkin', 'WEEK ' + w + ' CHECK-IN') + '</div>';
+    html += hw2CheckinHistory();
+    html += renderNotes(prefix);
+    content.innerHTML = html;
+    attachNotes(prefix);
+    return;
+  }
+
+  if (day.lifts) {
+    if (!day.circuit) html += renderGymWarmup();
+    html += '<div class="section"><div class="section-label">// lift</div>' + renderLiftTable(day.lifts, prefix, null) + '</div>';
+  }
+  if (day.circuit) {
+    html += '<div class="section"><div class="section-label">// hotel room — no gym needed</div>' + hw2List(day.circuit.items, prefix, 'hotel', day.circuit.title)
+      + '<div class="hw2-num-foot">' + day.circuit.note + '</div></div>';
+  }
+  if (day.sdc) html += hw2SDC(day.sdc, prefix);
+  if (day.engine) {
+    html += '<div class="section"><div class="section-label">// hybrid engine — run + station</div>'
+      + hw2List(day.engine.moves.map(function(m){ return { name: m.toUpperCase() }; }), prefix, 'eng', day.engine.title)
+      + '<div class="hw2-num-foot">' + day.engine.note + '</div></div>';
+  }
+  if (day.run) html += '<div class="section"><div class="section-label">// ' + day.run.title.toLowerCase() + '</div>' + hw2RunCard(day.run, prefix) + '</div>';
+  if (day.core) html += '<div class="section"><div class="section-label">// core</div>' + hw2List(day.core, prefix, 'core', 'CORE — 10 MIN') + '</div>';
+  if (day.grid) {
+    html += '<div class="section"><div class="section-label">// 12-week saturday plan</div><div class="mileage-grid">';
+    HW2_SATURDAY.forEach(function(s, i) {
+      html += '<div class="mile-card' + (i === currentBlock ? ' current' : '') + '"><div class="mile-card-week">WK ' + (i + 1) + '</div>'
+        + (s.kind === 'run'
+          ? '<div class="mile-card-dist">' + s.mins + '<span>min</span></div><div class="mile-card-week" style="margin-top:2px;">RUN</div>'
+          : '<div class="mile-card-dist" style="font-size:0.95rem;">' + s.lbs + '<span>lb</span></div><div class="mile-card-week" style="margin-top:2px;">RUCK ' + s.mi + 'mi</div>')
+        + '</div>';
+    });
+    html += '</div></div>';
+  }
+  if (day.pm) html += '<div class="section"><div class="section-label">// after school</div><div class="info-box">🕒 ' + day.pm.toUpperCase() + '</div></div>';
+  html += renderNotes(prefix);
+  content.innerHTML = html;
+  attachNotes(prefix);
+}
+
+// ============================================================
 // RENDER HELPERS
 // ============================================================
 
@@ -1299,6 +1730,10 @@ function renderBlockNav() {
 
 function updateProgressCards() {
   const b = BLOCKS[currentBlock];
+  document.getElementById('block-word').textContent = currentProgram === 'hw2' ? 'WEEK' : 'BLOCK';
+  if (currentProgram === 'hw2') { updateHW2Cards(); return; }
+  document.getElementById('progress-card-2-label').textContent = '// intensity';
+  document.getElementById('prog-card-3-label').textContent = currentProgram === 'bct' ? '// acft target' : '// long run';
   document.getElementById('block-display').textContent = b.num;
   document.getElementById('pct-display').textContent = currentProgram === 'bct' ? b.pct + '%' : 'WK' + b.num;
   document.getElementById('progress-val').innerHTML = 'BLOCK ' + b.num + ' <span>/ 12</span>';
@@ -1315,14 +1750,24 @@ function updateProgressCards() {
   }
 }
 
+const PROGRAM_SUBS = {
+  hw2: '// HYBRID WARRIOR II — CYCLE 2 — OCT 12 → JAN 3',
+  hybrid: '// HYBRID WARRIOR — CYCLE 1 (ARCHIVE) — AUG 3 → OCT 25',
+  bct: '// BODYBUILDING + PROGRAM — 12-WEEK CYCLE',
+};
+function syncProgTabs() {
+  document.querySelectorAll('.prog-tab').forEach(t => t.classList.toggle('active', t.dataset.prog === currentProgram));
+  document.getElementById('header-sub').textContent = PROGRAM_SUBS[currentProgram] || PROGRAM_SUBS.hw2;
+}
+
 function setProgram(prog) {
   currentProgram = prog;
-  currentDay = todayPosition().day;
-  document.querySelectorAll('.prog-tab').forEach(t => t.classList.remove('active'));
-  event.target.classList.add('active');
-  document.getElementById('header-sub').textContent = prog === 'bct'
-    ? '// BODYBUILDING + PROGRAM — 12-WEEK CYCLE'
-    : '// HYBRID WARRIOR PROGRAM — 12-WEEK CYCLE';
+  // Each program has its own start date, so jump to today's week in it
+  const p = todayPosition();
+  currentBlock = p.block;
+  currentDay = p.day;
+  syncProgTabs();
+  renderBlockNav();
   updateProgressCards();
   renderWorkout();
   savePosition();
@@ -1341,8 +1786,8 @@ const HYB_DAYS = ['monday','tuesday','wednesday','thursday','friday','saturday',
 
 function renderDayTabs() {
   const days = currentProgram === 'bct' ? BCT_DAYS : HYB_DAYS;
-  const data = currentProgram === 'bct'
-    ? getBCTData(BLOCKS[currentBlock])
+  const data = currentProgram === 'bct' ? getBCTData(BLOCKS[currentBlock])
+    : currentProgram === 'hw2' ? getHW2Data(currentBlock + 1)
     : getHybridData(BLOCKS[currentBlock]);
   const wrap = document.getElementById('day-tabs');
   wrap.innerHTML = days.map(d => {
@@ -1394,6 +1839,7 @@ const REST_LOOKUP = {
 const REST_DEFAULT = '60–90 SEC';
 
 function restFor(l) {
+  if (l.rest) return l.rest;
   if (l.ss) {
     return l.ssPos === 'first'
       ? 'NO REST → STRAIGHT INTO PAIRED MOVE'
@@ -1419,6 +1865,7 @@ function renderLiftTable(lifts, prefix, tagFn) {
       + (l.note ? '<div class="lift-note">' + l.note + '</div>' : '')
       + '<div class="rest-note">⏱ REST: ' + restFor(l) + '</div>'
       + (l.acft ? '<div class="acft-tag">ACFT RELEVANT</div>' : '')
+      + (l.aft ? '<div class="acft-tag">AFT EVENT</div>' : '')
       + (l.hybrid ? '<div class="hybrid-tag">HYBRID FOCUS</div>' : '')
       + '</td>'
       + '<td><span class="pct-badge">' + l.lbs + '</span>'
@@ -1697,6 +2144,8 @@ function renderWorkout() {
   renderDayTabs();
   if (currentProgram === 'bct') {
     renderBCTWorkout();
+  } else if (currentProgram === 'hw2') {
+    renderHW2Workout();
   } else {
     renderHybridWorkout();
   }
@@ -1707,6 +2156,7 @@ document.getElementById('footer-date').textContent =
   new Date().toLocaleDateString('en-US', { weekday:'long', year:'numeric', month:'long', day:'numeric' }).toUpperCase();
 
 // Init
+syncProgTabs();
 renderBlockNav();
 updateProgressCards();
 renderWorkout();
