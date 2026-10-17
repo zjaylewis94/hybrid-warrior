@@ -1337,15 +1337,20 @@ const RGR_START_LABEL = 'MON OCT 12';
 // Your numbers — all from Week 1 tests.
 const RGR_NUM_FIELDS = [
   { k: 'fiveMile', label: '5-MILE RUN',         hint: 'mm:ss · standard 40:00 · competitive 35:00', ph: '44:00' },
-  { k: 'fourMile', label: '4-MILE RUN (WK 1)',  hint: 'mm:ss — used for paces until a 5-mile is logged', ph: '36:00', onlyIfSet: true },
+  { k: 'fourMile', label: '4-MILE RUN (WK 1)',  hint: '37:00 = estimate from your 2-mile (Oct 17). Run a real one and replace it — used for paces until a 5-mile is logged', ph: '36:00', onlyIfSet: true },
   { k: 'pushups',  label: 'PUSH-UPS (2 MIN)',   hint: 'reps · SFRE text: 57 pass / 80 competitive (verify)', ph: '—' },
   { k: 'chins',    label: 'PULL-UPS (STRICT)',  hint: 'max, dead hang · 6 pass / 15+ competitive', ph: '—' },
   { k: 'plank',    label: 'PLANK (MAX)',        hint: 'm:ss — held to standard', ph: '2:06' },
   { k: 'circuit',  label: 'COMBAT CIRCUIT',     hint: 'mm:ss — Week 1 Wednesday · gate 12:30–14:00', ph: '15:30' },
-  { k: 'ruck4',    label: '4-MILE RUCK (35 LB)', hint: 'h:mm or mm:ss — Week 1 Saturday · 15:00/mi = 60:00', ph: '64:00' },
+  { k: 'ruck4',    label: '4-MILE RUCK (35 LB)', hint: 'Week 1: 3.87 mi in 56:27, 37 lb, 640 ft of hills → 58:20 for 4 mi · standard 15:00/mi = 60:00', ph: '64:00' },
 ];
+// Week 1 results Zach reported (Oct 17). They fill any field he hasn't typed himself; his own entry always wins.
+//   4-mile: estimate from a 2-mile at ~8:30/mi on tired legs (no clean 4-mile yet) — replace with a real one.
+//   Ruck: 3.87 mi in 56:27 at 37 lb with 640 ft of climbing, stretched to 4 mi.
+const RGR_NUM_SEED = { fourMile: '37:00', ruck4: '58:20' };
 let rgrNum = {};
 try { rgrNum = JSON.parse(localStorage.getItem('rgr-numbers') || '{}'); } catch(e) { rgrNum = {}; }
+Object.keys(RGR_NUM_SEED).forEach(function(k){ if (!rgrNum[k]) rgrNum[k] = RGR_NUM_SEED[k]; });
 let rgrNumOpen = null;  // null = open until a run time is logged
 function saveRgrNum(k, el) {
   rgrNum[k] = el.value.trim();
