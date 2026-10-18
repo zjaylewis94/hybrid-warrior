@@ -1337,15 +1337,20 @@ const RGR_START_LABEL = 'MON OCT 12';
 // Your numbers — all from Week 1 tests.
 const RGR_NUM_FIELDS = [
   { k: 'fiveMile', label: '5-MILE RUN',         hint: 'mm:ss · standard 40:00 · competitive 35:00', ph: '44:00' },
-  { k: 'fourMile', label: '4-MILE RUN (WK 1)',  hint: 'mm:ss — used for paces until a 5-mile is logged', ph: '36:00', onlyIfSet: true },
+  { k: 'fourMile', label: '4-MILE RUN (WK 1)',  hint: '37:00 = estimate from your 2-mile (Oct 17). Run a real one and replace it — used for paces until a 5-mile is logged', ph: '36:00', onlyIfSet: true },
   { k: 'pushups',  label: 'PUSH-UPS (2 MIN)',   hint: 'reps · SFRE text: 57 pass / 80 competitive (verify)', ph: '—' },
   { k: 'chins',    label: 'PULL-UPS (STRICT)',  hint: 'max, dead hang · 6 pass / 15+ competitive', ph: '—' },
   { k: 'plank',    label: 'PLANK (MAX)',        hint: 'm:ss — held to standard', ph: '2:06' },
   { k: 'circuit',  label: 'COMBAT CIRCUIT',     hint: 'mm:ss — Week 1 Wednesday · gate 12:30–14:00', ph: '15:30' },
-  { k: 'ruck4',    label: '4-MILE RUCK (35 LB)', hint: 'h:mm or mm:ss — Week 1 Saturday · 15:00/mi = 60:00', ph: '64:00' },
+  { k: 'ruck4',    label: '4-MILE RUCK (35 LB)', hint: 'Week 1: 3.87 mi in 56:27, 37 lb, 640 ft of hills → 58:20 for 4 mi · standard 15:00/mi = 60:00', ph: '64:00' },
 ];
+// Week 1 results Zach reported (Oct 17). They fill any field he hasn't typed himself; his own entry always wins.
+//   4-mile: estimate from a 2-mile at ~8:30/mi on tired legs (no clean 4-mile yet) — replace with a real one.
+//   Ruck: 3.87 mi in 56:27 at 37 lb with 640 ft of climbing, stretched to 4 mi.
+const RGR_NUM_SEED = { fourMile: '37:00', ruck4: '58:20' };
 let rgrNum = {};
 try { rgrNum = JSON.parse(localStorage.getItem('rgr-numbers') || '{}'); } catch(e) { rgrNum = {}; }
+Object.keys(RGR_NUM_SEED).forEach(function(k){ if (!rgrNum[k]) rgrNum[k] = RGR_NUM_SEED[k]; });
 let rgrNumOpen = null;  // null = open until a run time is logged
 function saveRgrNum(k, el) {
   rgrNum[k] = el.value.trim();
@@ -1446,6 +1451,16 @@ const RGR_NAV = [
   'PLAN: plot 3-4 points for Saturday\'s nav ruck — azimuth + distance for every leg.',
   'REVIEW: what cost you time on Saturday? Write the fix down for next block.',
 ];
+// Fueling for the hard/long days (Zach, Oct 17: thick spit and early cramps on a test run = dry + low sodium).
+const RGR_FUEL = [
+  { name: 'NIGHT BEFORE', detail: 'drink normally, salt your dinner' },
+  { name: '2-3 HOURS BEFORE', detail: 'real meal with carbs — rice, bread, potatoes, pasta' },
+  { name: '~60 MIN BEFORE', detail: '16-20 oz water + electrolytes (LMNT / Liquid IV / pinch of salt + juice) and a small snack — banana, pretzels, PB toast' },
+  { name: 'PEE CHECK', detail: 'pale yellow = go. Dark = drink first' },
+  { name: 'AFTER', detail: 'water + electrolytes, then protein + carbs within an hour' },
+];
+const RGR_FUEL_RUCK = { name: 'DURING (OVER 60 MIN)', detail: '16-24 oz an hour with electrolytes, a salty snack every hour past 90 min' };
+const RGR_CRAMP = 'Legs cramping before you\'re winded = low sodium + tired legs, not lack of fitness. Slow down, sip electrolytes, finish easy.';
 function rgrCore(w) {
   const s = w <= 6 ? '3' : '2';
   return [
@@ -1516,6 +1531,7 @@ function getRgrData(w) {
       pm: travel ? null : 'This is the hard run of the week. Run your reps; the kids run theirs.' };
   }
 
+  d.tuesday.fuel = RGR_FUEL;
   // WEDNESDAY — COMBAT CIRCUIT + STRENGTH B (Future Soldier is classroom)
   if (travel) {
     d.wednesday = { day: 'WEDNESDAY', focus: 'HOTEL — CIRCUIT', time: '~30 MIN',
@@ -1556,6 +1572,7 @@ function getRgrData(w) {
       { name: 'PLANK + SIDE PLANK', detail: '2 rounds' },
     ] };
 
+  d.thursday.fuel = RGR_FUEL;
   // FRIDAY — OFF (build weeks: an earned add-on, never a default)
   const earned = wk.type === 'BUILD';
   d.friday = { day: 'FRIDAY', focus: earned ? 'OFF · EARNED RUN' : 'OFF', time: 'OPTIONAL',
@@ -1569,7 +1586,8 @@ function getRgrData(w) {
     'Hot spot? Stop and fix it now. Feet are the #1 reason people fail rucks.'];
   if (r.note) rsteps.push(r.note);
   d.saturday = { day: 'SATURDAY', focus: w === 8 ? 'TEST — 12-MILE RUCK' : 'RUCK', time: '~' + Math.round(r.mi * 15 + 10) + ' MIN',
-    run: { title: 'RUCK — ' + r.lbs + ' LB · ' + r.mi + ' MI', steps: rsteps }, grid: true };
+    run: { title: 'RUCK — ' + r.lbs + ' LB · ' + r.mi + ' MI', steps: rsteps }, grid: true,
+    fuel: RGR_FUEL.slice(0, 4).concat([RGR_FUEL_RUCK, RGR_FUEL[4]]) };
 
   // SUNDAY — OFF + check-in + land nav study
   d.sunday = { day: 'SUNDAY', focus: 'OFF · LAND NAV', time: '25 MIN',
@@ -1582,14 +1600,14 @@ function getRgrData(w) {
 }
 
 // ── Selection Prep rendering ──
-function rgrList(items, prefix, kind, title) {
+function rgrList(items, prefix, kind, title, noLog) {
   let h = '<div class="lt-tracker"><div class="lt-tracker-title">' + title + '</div><div class="lt-sets">';
   items.forEach(function(c, i) {
     const key = prefix + '-' + kind + '-' + i;
     h += '<div class="lt-set"><div class="lt-set-label">' + (i + 1) + '. ' + c.name + '</div>'
       + '<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;justify-content:flex-end;">'
       + (c.detail ? '<div class="lt-set-detail">' + c.detail + '</div>' : '')
-      + '<input class="actual-input" placeholder="—" value="' + (actualLog[key] || '') + '" oninput="saveActual(\'' + key + '\', this)">'
+      + (noLog ? '' : '<input class="actual-input" placeholder="—" value="' + (actualLog[key] || '') + '" oninput="saveActual(\'' + key + '\', this)">')
       + '<div class="done-check ' + (checkedState[key] ? 'checked' : '') + '" id="check-' + key + '" onclick="toggleCheck(\'' + key + '\')">' + (checkedState[key] ? '✓' : '') + '</div>'
       + '</div></div>';
   });
@@ -1698,6 +1716,11 @@ function renderRgrWorkout() {
     html += '<div class="section"><div class="section-label">// combat fitness circuit — the ranger school event</div>'
       + rgrList(RGR_CIRCUIT, prefix, 'cfa', day.combat.title)
       + '<div class="rgr-num-foot">' + day.combat.note + '</div></div>';
+  }
+  if (day.fuel) {
+    html += '<details class="rgr-numbers rgr-fuel"><summary>// FUEL + HYDRATE — read before you run</summary>'
+      + '<div style="padding:0 12px 4px">' + rgrList(day.fuel, prefix, 'fuel', 'BEFORE · DURING · AFTER', true) + '</div>'
+      + '<div class="rgr-num-foot">' + RGR_CRAMP + '</div></details>';
   }
   if (day.run) html += '<div class="section"><div class="section-label">// ' + day.run.title.toLowerCase() + '</div>' + rgrRunCard(day.run, prefix) + '</div>';
   if (day.core) html += '<div class="section"><div class="section-label">// ' + (currentDay === 'thursday' ? 'grease the groove + core' : 'core') + '</div>' + rgrList(day.core, prefix, 'core', currentDay === 'thursday' ? 'CHIN-UPS · PUSH-UPS · CORE' : 'CORE — 10 MIN') + '</div>';
