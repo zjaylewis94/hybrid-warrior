@@ -1322,7 +1322,7 @@ function getHybridData(block) {
 // Friday and Sunday off.
 const RGR_WEEKS = [
   { type: 'TEST',   tag: 'BASELINE',                note: 'Test week. Log every result in YOUR NUMBERS — paces and reps for the next 7 weeks come from them.' },
-  { type: 'TRAVEL', tag: 'CONFERENCE WEEK',         note: 'Art conference Mon–Thu: hotel sessions, 30 min. Saturday ruck is back to normal.' },
+  { type: 'TRAVEL', tag: 'CONFERENCE WEEK',         note: 'Art conference Mon–Thu. Monday: real gym before the 4 pm hotel check-in. Tue/Wed: hotel sessions, 30 min. Saturday ruck is back to normal.' },
   { type: 'BUILD',  tag: 'BUILD 1',                 note: 'Ship Prep starts. The run and the plank are the program now — lifting just keeps what you have.' },
   { type: 'BUILD',  tag: 'BUILD 1',                 note: 'If Thursday\'s tempo feels like a race, Tuesday was too hard. Easy days stay easy.' },
   { type: 'BUILD',  tag: 'BUILD 1 — PEAK',          note: 'Biggest week of block 1. Sunday: InBody scan #1 — morning, fasted, before training.' },
@@ -1530,11 +1530,25 @@ function getRgrData(w) {
       ],
       pm: 'Future Soldier PT. Go at their pace.' };
   } else if (travel) {
-    d.monday = { day: 'MONDAY', focus: 'HOTEL — STRENGTH', time: '~30 MIN',
-      circuit: { title: 'HOTEL CIRCUIT A — 4 ROUNDS', items: rgrHotel([
-        ['DEAD-STOP PUSH-UPS', rgrPct('pushups', 0.5, '15')], ['SPLIT SQUATS (BACK FOOT ON BED)', '12 ea'],
-        ['SINGLE-LEG RDL', '10 ea, slow'], ['DOOR / TOWEL ROWS', '12'], ['PLANK', '45 sec']]),
-        note: 'Rest 60–90 sec between rounds.' } };
+    // Conference Monday: gym access before the 4 pm hotel check-in (Zach, Oct 19) — the build-week lift
+    // plus the Future Soldier run he misses, instead of the hotel circuit
+    d.monday = { day: 'MONDAY', focus: 'GYM — LIFT + EASY RUN', time: '~60 MIN',
+      lifts: [
+        { name: 'TRAP BAR DEADLIFT', note: 'Maintenance — fast reps, no grinders. Moving slow? Drop to ' + rgrDL(0.83) + '. The AFT stops scoring around 340.', sets: '3', reps: '3', lbs: rgrDL(0.88), rest: '2-3 MIN' },
+        { name: 'HAND-RELEASE PUSH-UPS', ss: 'R', ssPos: 'first', note: 'Chest to floor, hands off, lock out.', sets: '2', reps: '25', lbs: 'BW' },
+        { name: 'PULL-UPS (DEAD HANG)', ss: 'R', ssPos: 'last', note: 'Rest 90 sec after the pair.', sets: '4', reps: rgrPct('chins', 0.6, '4-5'), lbs: 'BW' },
+        { name: 'FARMER CARRY', note: 'Heavier than the AFT 40s so test day feels light.', sets: '3', reps: '50m', lbs: '2x50', rest: '60 SEC' },
+      ],
+      run: { title: 'EASY RUN — 25 MIN', steps: [
+        'Treadmill, 1% incline. ' + rgrEasy(),
+        'Stands in for the Future Soldier run you miss today.',
+        'Then the plank block below.'] },
+      core: [
+        { name: 'PLANK', detail: '3 x ' + rgrPlank(0.6, 3) + ' — rest 60 sec, AFT form' },
+        { name: 'SIDE PLANK', detail: '2 x 30 sec ea' },
+        { name: 'DEAD BUGS', detail: '2 x 8 ea — low back down' },
+      ],
+      pm: 'Train inside the 11–7 window or eat right after. Done by ~1:30 → eat, shower, check in by 4. 20 oz water + electrolytes before the drive.' };
   } else if (w === 6 || w === 13 || w === 15) {
     const light = { 6: ['2', '3', '340', 'The AFT max. Prove it moves fast — then stop.'], 13: ['2', '2', rgrDL(0.75), 'Light. The mock is Saturday.'], 15: ['2', '3', rgrDL(0.55), 'Just the groove. You ship Monday.'] }[w];
     d.monday = { day: 'MONDAY', focus: w === 15 ? 'TAPER' : 'LIGHT — ' + (w === 6 ? 'CHECKPOINT' : 'MOCK AFT') + ' WEEK', time: '~25 MIN',
