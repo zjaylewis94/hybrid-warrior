@@ -685,6 +685,9 @@
   ::-webkit-scrollbar-track { background: var(--dark); }
   ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
   ::-webkit-scrollbar-thumb:hover { background: var(--olive); }
+  .data-bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin: 28px 0 8px; padding: 12px 14px; border: 1px solid var(--border); }
+  .data-bar-text { font-size: 0.8rem; letter-spacing: 1px; opacity: 0.7; }
+  .data-bar-btns { display: flex; gap: 8px; }
 </style>
 </head>
 <body>
@@ -734,6 +737,12 @@
   <!-- WORKOUT CONTENT -->
   <div class="workout-panel" id="workout-content"></div>
 
+  <!-- YOUR DATA: the log lives only in this browser, so it can be saved to a file and brought back -->
+  <div class="data-bar">
+    <div class="data-bar-text">// your log, checkmarks and notes live in this browser only</div>
+    <div class="data-bar-btns"><button class="prog-tab" onclick="backupData()">BACKUP</button><button class="prog-tab" onclick="restoreData()">RESTORE</button></div>
+  </div>
+
 </div>
 
 <footer class="footer">
@@ -742,6 +751,39 @@
 </footer>
 
 <script>
+// ============================================================
+// BACKUP / RESTORE — everything this book keeps in the browser, as one JSON file.
+// Every book shares one origin, so only this book's keys are touched: zach*, rgr-*, notes-*.
+// ============================================================
+function isOwnKey(k) { return k.indexOf('zach') === 0 || k.indexOf('rgr-') === 0 || k.indexOf('notes-') === 0; }
+function backupData() {
+  var data = {};
+  for (var i = 0; i < localStorage.length; i++) { var k = localStorage.key(i); if (isOwnKey(k)) data[k] = localStorage.getItem(k); }
+  var blob = new Blob([JSON.stringify({ book: 'hybrid-warrior', saved: new Date().toISOString(), data: data }, null, 1)], { type: 'application/json' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = 'workout_book_backup_' + new Date().toISOString().slice(0, 10) + '.json';
+  document.body.appendChild(a); a.click();
+  setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+}
+function restoreData() {
+  var inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'application/json,.json';
+  inp.onchange = function () {
+    var f = inp.files[0]; if (!f) return;
+    var r = new FileReader();
+    r.onload = function () {
+      var j; try { j = JSON.parse(r.result); } catch (e) { j = null; }
+      if (!j || j.book !== 'hybrid-warrior' || !j.data) { alert("That file isn't a Workout Book backup."); return; }
+      if (!confirm('Replace the log, checkmarks and notes in this browser with the backup from ' + String(j.saved || '').slice(0, 10) + '?')) return;
+      var old = []; for (var i = 0; i < localStorage.length; i++) { var k = localStorage.key(i); if (isOwnKey(k)) old.push(k); }
+      old.forEach(function (k) { localStorage.removeItem(k); });
+      Object.keys(j.data).forEach(function (k) { if (isOwnKey(k)) localStorage.setItem(k, j.data[k]); });
+      location.reload();
+    };
+    r.readAsText(f);
+  };
+  inp.click();
+}
+
 // ============================================================
 // CONFIG
 // ============================================================
