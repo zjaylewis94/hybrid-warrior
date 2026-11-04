@@ -1623,12 +1623,11 @@ function renderRgrWorkout() {
 
   const n = new Date(), today = new Date(n.getFullYear(), n.getMonth(), n.getDate());
   const toShip = Math.round((SHIP_DATE - today) / 86400000);
-  if (toShip > 0) {
-    html += '<div class="section"><div class="kb-prime-box"><div class="kb-prime-title">⚡ ' + toShip + ' DAY' + (toShip > 1 ? 'S' : '') + ' TO SHIP — BCT MON JAN 25</div>'
-      + '<div style="font-size:0.85rem;color:var(--text);letter-spacing:0.5px;line-height:1.5;">Goal: AFT 465+, 80+ in every event — that also skips the tape. The 2-mile and the plank are the program. The circuits keep the muscle and the engine while you cut.</div></div></div>';
-  }
+  // One strip: countdown + week + today's length, with the week's note underneath (the AFT goal is in the header)
+  html += '<div class="section"><div class="kb-prime-box" style="padding:10px 14px"><div class="kb-prime-title" style="margin-bottom:4px">'
+    + (toShip > 0 ? '⚡ ' + toShip + ' DAY' + (toShip > 1 ? 'S' : '') + ' TO SHIP · ' : '') + 'WK ' + w + ' · ' + day.week.tag + ' · ' + day.time + '</div>'
+    + '<div style="font-size:0.8rem;color:var(--text-dim);letter-spacing:0.5px;line-height:1.4;">' + day.week.note + '</div></div></div>';
   html += rgrNumbersCard();
-  html += '<div class="section"><div class="info-box">WEEK ' + w + ' · ' + day.week.tag + ' · ' + day.time + '<br><span style="color:var(--text-dim)">' + day.week.note + '</span></div></div>';
 
   if (day.recovery) {
     html += '<div class="section"><div class="section-label">// ' + (day.checkin ? 'off day' : 'recovery') + '</div><div class="cooldown-items">'
