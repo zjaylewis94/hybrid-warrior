@@ -703,7 +703,8 @@
       <div class="program-switcher">
         <button class="prog-tab" data-prog="ranger" onclick="setProgram('ranger')">SHIP PREP</button>
         <button class="prog-tab" data-prog="hybrid" onclick="setProgram('hybrid')">HYBRID WARRIOR</button>
-        <button class="prog-tab" data-prog="bct" onclick="setProgram('bct')">BODYBUILDING +</button>
+        <button class="prog-tab" data-prog="op" onclick="setProgram('op')">OPERATOR</button>
+        <button class="prog-tab" data-prog="fm" onclick="setProgram('fm')">FUNCTIONAL MUSCLE</button>
       </div>
       <div class="block-nav" id="block-nav"></div>
     </div>
@@ -789,64 +790,21 @@ function restoreData() {
 // ============================================================
 const ORM = { deadlift: 445, squat: 450, bench: 315, ohp: 190, hangclean: 275 };
 
-const BLOCKS = [
-  { num: 1,  pct: 60 },
-  { num: 2,  pct: 65 },
-  { num: 3,  pct: 70 },
-  { num: 4,  pct: 75 },
-  { num: 5,  pct: 80 },
-  { num: 6,  pct: 85 },
-  { num: 7,  pct: 90 },
-  { num: 8,  pct: 92 },
-  { num: 9,  pct: 94 },
-  { num: 10, pct: 96 },
-  { num: 11, pct: 98 },
-  { num: 12, pct: 100 },
-];
-
-// Strength overload: +5 lbs every 2 weeks
-// SCALED DOWN (rebuild phase): base dropped from 0.75 -> 0.58 to match current
-// work capacity. Form and reps first — earn the load back, then bump this up.
-const HYBRID_BASE = 0.58;
-function hybridLift(lift, weekNum) {
-  const base = ORM[lift] || 0;
-  const bonus = Math.floor((weekNum - 1) / 2) * 5;
-  return Math.round((base * HYBRID_BASE + bonus) / 5) * 5;
-}
-
-// Long run mileage: +0.5 mi/week starting at 4 mi
-function longRunMiles(weekNum) {
-  return (4 + (weekNum - 1) * 0.5).toFixed(1);
-}
-
-// Endurance run: starts at 3 mi, +0.5/week
-function enduranceMiles(weekNum) {
-  return (3 + (weekNum - 1) * 0.5).toFixed(1);
-}
-
-function calcWeight(lift, pct) {
-  const base = ORM[lift] || 0;
-  return Math.round((base * pct / 100) / 5) * 5;
-}
-
-function pyramidSets(topWeight, sets) {
-  const arr = [];
-  for (let i = sets - 1; i >= 0; i--) {
-    arr.push(Math.round((topWeight - i * topWeight * 0.08) / 5) * 5);
-  }
-  return arr.join('-');
-}
-
 let savedPosition = {};
 try { savedPosition = JSON.parse(localStorage.getItem('zach-position') || '{}'); } catch(e) { savedPosition = {}; }
 let currentProgram = savedPosition.program || 'ranger';
 // One time only: open on Ship Prep (the plan you're running now). After that, the last tab you pick sticks.
 try { if (!localStorage.getItem('rgr-default')) { currentProgram = 'ranger'; localStorage.setItem('rgr-default', '1'); } } catch(e) {}
-if (['ranger', 'hybrid', 'bct'].indexOf(currentProgram) < 0) currentProgram = 'ranger';
-// Week 1 Monday of each 12-week cycle. New cycle → add a new start date.
-const CYCLE_START = new Date(2026, 7, 3); // Cycle 1 + Bodybuilding: Mon Aug 3, 2026
+if (currentProgram === 'bct') currentProgram = 'fm';   // Bodybuilding + was replaced by Functional Muscle (Nov 4, 2026)
+if (['ranger', 'hybrid', 'op', 'fm'].indexOf(currentProgram) < 0) currentProgram = 'ranger';
 const RANGER_START = new Date(2026, 9, 12);  // Ship Prep: Mon Oct 12, 2026 → Jan 24, 2027 (15 weeks; id stays 'ranger' so logs keep)
-function cycleStart() { return currentProgram === 'ranger' ? RANGER_START : CYCLE_START; }
+// Operator's settings (maxes + start date) load here, before todayPosition() first runs. See OPERATOR below.
+let opCfg = {};
+try { opCfg = JSON.parse(localStorage.getItem('zach-op') || '{}') || {}; } catch(e) { opCfg = {}; }
+// Operator, Functional Muscle and Hybrid Warrior each keep their own start date there (`start`, `fmStart`, `hwStart`).
+function opStartKey() { return currentProgram === 'fm' ? 'fmStart' : currentProgram === 'hybrid' ? 'hwStart' : 'start'; }
+function opStartDate() { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(opCfg[opStartKey()] || ''); return m ? new Date(+m[1], +m[2] - 1, +m[3]) : null; }
+function cycleStart() { return currentProgram === 'ranger' ? RANGER_START : opStartDate(); }
 function programWeeks() { return currentProgram === 'ranger' ? 15 : 12; }
 const WEEKDAYS = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
 function todayKey() { const n = new Date(); return n.getFullYear() + '-' + n.getMonth() + '-' + n.getDate(); }
@@ -854,7 +812,9 @@ function todayKey() { const n = new Date(); return n.getFullYear() + '-' + n.get
 function todayPosition() {
   const n = new Date();
   const today = new Date(n.getFullYear(), n.getMonth(), n.getDate());
-  const days = Math.round((today - cycleStart()) / 86400000);
+  const start = cycleStart();
+  if (!start) return { block: 0, day: WEEKDAYS[n.getDay()] };   // a program with no start date yet
+  const days = Math.round((today - start) / 86400000);
   return { block: Math.min(programWeeks() - 1, Math.max(0, Math.floor(days / 7))), day: WEEKDAYS[n.getDay()] };
 }
 let currentBlock = todayPosition().block;
@@ -875,163 +835,8 @@ function saveActual(key, el) {
 }
 
 // ============================================================
-// BCT DATA
-// ============================================================
-function getBCTData(block) {
-  const p = block.pct;
-  const dl = calcWeight('deadlift', p);
-  const sq = calcWeight('squat', p);
-  const bp = calcWeight('bench', p);
-  const ohp = calcWeight('ohp', p);
-  const amrap = block.num >= 3 ? '+ AMRAP final set' : '';
-
-  const runPrograms = [
-    { title: 'INTERVAL RUN', desc: '4 x 800m', detail: '90sec rest between', note: 'Focus on form & breathing. Target pace: easy-moderate.' },
-    { title: 'INTERVAL RUN', desc: '5 x 800m', detail: '75sec rest between', note: 'Push the last 2 intervals.' },
-    { title: 'TEMPO RUN', desc: '20 min sustained', detail: 'Comfortably hard pace', note: 'Stay at 80% effort. No walk breaks.' },
-    { title: 'TEMPO RUN', desc: '25 min sustained', detail: 'Comfortably hard pace', note: 'Build to it. Last 5 min push.' },
-    { title: 'FARTLEK', desc: '30 min', detail: '1 min hard / 2 min easy', note: 'Mix terrain if possible. Simulate BCT conditions.' },
-    { title: 'TEMPO RUN', desc: '30 min sustained', detail: '~85% effort', note: 'Target sub-15:30 2-mile pace.' },
-    { title: 'INTERVAL RUN', desc: '6 x 800m', detail: '60sec rest between', note: 'Push pace — these should hurt. HR near max on last 2.' },
-    { title: 'TEMPO RUN', desc: '35 min sustained', detail: '~87% effort', note: 'This is race prep. Hold the pace through discomfort.' },
-    { title: 'FARTLEK', desc: '40 min', detail: '90sec hard / 90sec easy', note: 'Simulate uneven BCT pace demands. Stay controlled.' },
-    { title: 'TEMPO RUN', desc: '40 min sustained', detail: '~90% effort', note: 'Sub-15:00 2-mile target pace. Lock in.' },
-    { title: '1.5-MILE TIME TRIAL', desc: '1.5 miles — max effort', detail: 'Full send', note: 'Track your time. Rest 10 min then 1 mile easy.' },
-    { title: '2-MILE TIME TRIAL', desc: 'Full 2-mile max effort', detail: 'ACFT simulation', note: 'This is your test. Leave nothing in the tank.' },
-  ];
-
-  const ltProgressions = [
-    [{ label: 'Dead Hang Hold', sets: '3', detail: '20-30 sec' }, { label: 'Negative Leg Tuck', sets: '3', detail: '5 reps slow lower' }, { label: 'Knee Raise (hanging)', sets: '3', detail: '10 reps' }],
-    [{ label: 'Dead Hang Hold', sets: '3', detail: '30 sec' }, { label: 'Negative Leg Tuck', sets: '3', detail: '6 reps' }, { label: 'Assisted Leg Tuck (band)', sets: '3', detail: '5 reps' }],
-    [{ label: 'Assisted Leg Tuck (band)', sets: '4', detail: '6 reps' }, { label: 'Negative Leg Tuck', sets: '3', detail: '5 reps' }, { label: 'L-Sit Hold (bars)', sets: '3', detail: '10 sec' }],
-    [{ label: 'Assisted Leg Tuck', sets: '4', detail: '8 reps' }, { label: 'Leg Tuck (attempt full)', sets: '3', detail: 'Max reps' }, { label: 'Hanging Knee Raise', sets: '3', detail: '12 reps' }],
-    [{ label: 'Full Leg Tuck', sets: '4', detail: 'Max reps' }, { label: 'Negative (weighted)', sets: '3', detail: '5 reps' }, { label: 'L-Sit Progression', sets: '3', detail: '15 sec' }],
-    [{ label: 'Full Leg Tuck', sets: '5', detail: 'Max reps' }, { label: 'Weighted Negative', sets: '3', detail: '5 reps' }, { label: 'Tuck + Hold', sets: '3', detail: '3 sec hold at top' }],
-    [{ label: 'Full Leg Tuck AMRAP', sets: '3', detail: 'Rest 90sec' }, { label: 'Weighted Leg Tuck', sets: '2', detail: '5ea' }, { label: 'Tuck + Hold', sets: '3', detail: '5 sec' }],
-    [{ label: 'Full Leg Tuck AMRAP', sets: '4', detail: 'Rest 75sec' }, { label: 'Weighted Leg Tuck', sets: '3', detail: '5ea' }, { label: 'L-Sit Hold', sets: '3', detail: '20 sec' }],
-    [{ label: 'Full Leg Tuck AMRAP', sets: '4', detail: 'Rest 60sec' }, { label: 'Weighted Leg Tuck', sets: '3', detail: '6ea' }, { label: 'Tuck + 3sec Hold', sets: '4', detail: 'Max reps' }],
-    [{ label: 'Full Leg Tuck — Cluster Sets', sets: '5', detail: '5 reps / 20sec rest x3' }, { label: 'Weighted Leg Tuck', sets: '3', detail: '5ea' }, { label: 'Dead Hang', sets: '3', detail: '45 sec' }],
-    [{ label: 'ACFT Simulation', sets: '3', detail: 'Max leg tucks, 2 min rest' }, { label: 'Weighted Negative', sets: '3', detail: '5ea slow' }, { label: 'Hanging Abs Circuit', sets: '3', detail: '10 reps' }],
-    [{ label: 'ACFT FINAL SIM', sets: '2', detail: 'Max leg tucks — full rest between' }, { label: 'Hanging Abs Circuit', sets: '3', detail: '10 reps' }, { label: 'REST', sets: '—', detail: 'Save energy for 2-mile TIME TRIAL' }],
-  ];
-
-  return {
-    monday: {
-      day: 'MONDAY', focus: 'CHEST + TRIS', warmup: 'Static stretching + 5 min jog + band pull-aparts',
-      lifts: [
-        { name: 'DB FLYS', note: 'Chest opener', sets: '3', reps: '12', lbs: String(Math.round(ohp*0.35/5)*5), acft: false },
-        { name: 'DB PRESS', note: 'Controlled eccentric', sets: '3', reps: '10', lbs: String(Math.round(bp*0.55/5)*5), acft: false },
-        { name: 'BENCH PRESS', note: 'Pyramid — ' + pyramidSets(bp,4) + ' ' + amrap, sets: '4', reps: '10-8-6-4', lbs: Math.round(bp*0.6/5)*5 + '→' + bp, acft: false },
-        { name: 'CHEST PUMPS', note: 'Cable or push-up variation', sets: '3', reps: '12', lbs: 'Mod', acft: false },
-        { name: 'DELT CIRCUIT', note: 'Front / lateral / rear', sets: '3', reps: '10ea', lbs: 'Light', acft: false },
-        { name: 'CABLE FLYS', note: 'High to low', sets: '3', reps: '12', lbs: 'Mod', acft: false },
-        { name: 'OVERHEAD TRI EXT', note: 'Cable or DB', sets: '3', reps: '12', lbs: String(Math.round(ohp*0.4/5)*5), acft: false },
-        { name: 'TRICEP PUSHDOWNS', note: 'Finisher', sets: '3', reps: '15', lbs: 'Mod', acft: false },
-      ],
-      cooldown: ['CORE WORK', 'PLANK 3x30sec', 'DEAD BUGS 3x10'],
-    },
-    tuesday: {
-      day: 'TUESDAY', focus: 'BACK + BIS', warmup: 'Static stretching + 5 min row machine + band facepulls',
-      lifts: [
-        { name: 'SEATED DB CURLS', note: '12ea', sets: '3', reps: '12ea', lbs: '35', acft: false },
-        { name: "W'S", note: 'Rear delt / rotator cuff', sets: '3', reps: '12', lbs: '10', acft: false },
-        { name: 'PULL UPS', note: block.num <= 2 ? 'Band-assisted, 8 reps' : 'Strict, pyramid', sets: '3', reps: '8', lbs: block.num <= 3 ? 'Assisted' : 'BW', acft: true },
-        { name: 'LAT PULLDOWNS', note: 'Pyramid', sets: '3', reps: '8', lbs: Math.round(bp*0.55/5)*5 + '-' + Math.round(bp*0.65/5)*5, acft: false },
-        { name: 'T-BAR ROWS', note: 'Sub: cable row if unavailable', sets: '3', reps: '8', lbs: Math.round(dl*0.35/5)*5 + '-' + Math.round(dl*0.45/5)*5, acft: false },
-        { name: "21'S", note: '7 lower / 7 upper / 7 full', sets: '3', reps: '7-7-7', lbs: '50', acft: false },
-        { name: 'REAR DELT EXT', note: 'Cable or reverse fly', sets: '3', reps: '10', lbs: Math.round(ohp*0.65/5)*5 + '-' + Math.round(ohp*0.75/5)*5, acft: false },
-      ],
-      cooldown: ['CORE WORK', 'HOLLOW HOLDS 3x20sec', 'CABLE CRUNCHES 3x15'],
-    },
-    wednesday: {
-      day: 'WEDNESDAY', focus: 'LEGS + POSTERIOR', warmup: 'Static stretching + hip circles + bodyweight squats',
-      lifts: [
-        { name: 'GOOD MORNINGS', note: 'Activate posterior chain', sets: '1', reps: '10', lbs: '45', acft: false },
-        { name: 'FRONT SQUAT', note: 'Pyramid — ' + pyramidSets(Math.round(sq*0.9/5)*5,4) + ' ' + amrap, sets: '4', reps: '10-8-6-4', lbs: Math.round(sq*0.6/5)*5 + '→' + Math.round(sq*0.9/5)*5, acft: false },
-        { name: 'TRAP BAR DEADLIFT', note: 'ACFT MOVEMENT — ' + pyramidSets(dl,3), sets: '3', reps: '8-5-3', lbs: Math.round(dl*0.6/5)*5 + '→' + dl, acft: true },
-        { name: 'LEG EXTENSIONS', note: 'Controlled', sets: '3', reps: '12', lbs: 'Mod', acft: false },
-        { name: 'LEG CURLS', note: 'Slow eccentric', sets: '3', reps: '12', lbs: 'Mod', acft: false },
-        { name: 'LATERAL SQUAT WALK', note: 'Resistance band', sets: '4', reps: '10yd ea', lbs: 'BW', acft: false },
-        { name: 'SINGLE LEG PRESS', note: 'Balance + unilateral strength', sets: '3', reps: '6ea', lbs: Math.round(sq*0.45/5)*5 + '-' + Math.round(sq*0.6/5)*5, acft: false },
-        { name: 'BACK EXTENSIONS', note: 'Bodyweight + plate', sets: '3', reps: '10', lbs: 'BW+' + (block.num <= 3 ? '10' : '25'), acft: false },
-      ],
-      cooldown: ['CORE WORK', 'HIP BRIDGES 3x15', 'PALLOF PRESS 3x10'],
-    },
-    thursday: {
-      day: 'THURSDAY', focus: 'RUN + LEG TUCK', warmup: 'Dynamic warmup — leg swings, high knees, A-skips (5 min)',
-      run: runPrograms[block.num - 1],
-      lt: ltProgressions[block.num - 1],
-      cooldown: ['EASY WALK 5 MIN', 'STATIC STRETCH', 'FOAM ROLL LEGS'],
-    },
-    friday: {
-      day: 'FRIDAY', focus: 'FULL BODY / FUNCTIONAL', warmup: 'Static stretching + cardio (5 min)',
-      lifts: [
-        { name: "RDL'S", note: 'Hinge pattern — ' + pyramidSets(Math.round(dl*0.7/5)*5,3), sets: '3', reps: '10', lbs: Math.round(dl*0.5/5)*5 + '-' + Math.round(dl*0.65/5)*5, acft: false },
-        { name: 'HANG CLEAN + FRONT SQUAT', note: 'Power development', sets: '4', reps: '5', lbs: Math.round(sq*0.35/5)*5 + '-' + Math.round(sq*0.5/5)*5, acft: true },
-        { name: 'INCLINE BENCH', note: 'Upper chest + shoulder angle', sets: '3', reps: '10', lbs: String(Math.round(bp*0.55/5)*5), acft: false },
-        { name: 'BENT OVER ROWS', note: 'Back thickness', sets: '3', reps: '10', lbs: Math.round(dl*0.35/5)*5 + '-' + Math.round(dl*0.45/5)*5, acft: false },
-        { name: 'FARMER CARRIES', note: 'Grip + core stability', sets: '4', reps: '40yd', lbs: Math.round(dl*0.2/5)*5 + ' ea', acft: true },
-        { name: 'KB SWINGS', note: 'Posterior power', sets: '3', reps: '15', lbs: '53', acft: false },
-        { name: 'SHRUGS', note: 'Trap strength', sets: '3', reps: '12', lbs: String(Math.round(dl*0.4/5)*5), acft: false },
-        { name: 'LUNGE WALKS', note: 'Loaded if possible', sets: '3', reps: '20yd', lbs: 'BW' + (block.num >= 4 ? '+25' : ''), acft: false },
-      ],
-      cooldown: ['CORE WORK', 'PUSH-UP BURNOUT', 'STATIC STRETCH'],
-    },
-    saturday: {
-      day: 'SATURDAY', focus: 'CALISTHENICS', warmup: 'Static stretching + cardio',
-      lifts: [
-        { name: 'HAND RELEASE PUSH-UPS', note: 'ACFT standard — chest to floor, hands up', sets: '4', reps: block.num <= 3 ? '10' : String(10 + block.num * 2), lbs: 'BW', acft: true },
-        { name: 'GOBLET SQUATS', note: 'KB or DB', sets: '3', reps: '15', lbs: '53', acft: false },
-        { name: 'TRX BAND PULLS', note: 'Row variation', sets: '3', reps: '12', lbs: 'BW', acft: false },
-        { name: 'KB SUITCASE CARRIES', note: 'Core anti-lateral flex', sets: '4', reps: '40yd ea', lbs: '53-70', acft: true },
-        { name: 'DIPS', note: 'Tricep strength + shoulder stability', sets: '3', reps: '10', lbs: 'BW', acft: false },
-        { name: 'CHIN UPS', note: 'Supinated grip', sets: '3', reps: 'Max', lbs: 'BW', acft: false },
-        { name: 'KB CLEAN AND PRESS', note: 'Full body power', sets: '3', reps: '8ea', lbs: '44-53', acft: false },
-        { name: 'SPRINT INTERVALS', note: '4 x 100m', sets: '4', reps: '100m', lbs: 'BW', acft: true },
-      ],
-      cooldown: ['CORE WORK', 'PLANK VARIATIONS', 'MOBILITY WORK'],
-    },
-    sunday: { day: 'SUNDAY', focus: 'REST', rest: true },
-  };
-}
-
-// ============================================================
 // HYBRID WARRIOR DATA
 // ============================================================
-// KB home circuit — rotating, standalone conditioning (~3x/week, flexible).
-// Each move shows the KB version + a bodyweight sub (until the bell is bought).
-const KB_CIRCUITS = {
-  'HINGE / POWER': [
-    { ex: 'KB Swings',        kb: '2x15 @ 16-24kg', sub: 'Broad jumps 2x10' },
-    { ex: 'KB Deadlifts',     kb: '2x10 @ 24kg',    sub: 'Single-leg RDL 2x8ea' },
-    { ex: 'Goblet Squats',    kb: '2x12 @ 16-24kg', sub: 'Tempo squats 2x12 (3s down)' },
-    { ex: 'KB Halos',         kb: '2x10ea @ 16kg',  sub: 'Plate/backpack halos 2x10ea' },
-    { ex: 'Turkish Get-Up',   kb: '1x3ea @ 16kg',   sub: 'Bodyweight get-up 1x3ea' },
-  ],
-  'CARRY / GRIP': [
-    { ex: 'Farmer Carry',     kb: '3x40yd @ mod',   sub: 'Loaded backpack carry 3x40yd' },
-    { ex: 'KB Clean & Press', kb: '2x8ea @ 16kg',   sub: 'Pike push-ups 2x8' },
-    { ex: 'KB Lunges',        kb: '2x10ea @ 16kg',  sub: 'Walking lunges 2x12ea' },
-    { ex: 'KB Row',           kb: '2x10ea @ 24kg',  sub: 'Backpack row 2x12ea' },
-    { ex: 'Suitcase Carry',   kb: '3x30yd ea',      sub: 'Single-arm backpack carry 3x30yd ea' },
-  ],
-  'FLOW / CONDITIONING': [
-    { ex: 'KB Swings',           kb: '3x15 @ 16-24kg', sub: 'Broad jumps 3x10' },
-    { ex: 'Goblet Rev. Lunge',   kb: '2x10ea @ 16kg',  sub: 'BW reverse lunge 2x12ea' },
-    { ex: 'KB High Pull',        kb: '2x10 @ 16kg',    sub: 'Explosive band pull 2x12' },
-    { ex: 'KB Push Press',       kb: '2x8ea @ 16kg',   sub: 'Pike push-ups 2x8' },
-    { ex: 'KB Windmill',         kb: '2x5ea @ light',  sub: 'BW windmill 2x8ea' },
-  ],
-};
-const KB_ORDER = ['HINGE / POWER', 'CARRY / GRIP', 'FLOW / CONDITIONING'];
-
-function getKBCircuit(week) {
-  const name = KB_ORDER[(week - 1) % 3];
-  const items = KB_CIRCUITS[name].slice();
-  items.circuitName = name;
-  return items;
-}
-
 // Plank progression rebuilt from a realistic baseline. Week 1 = max-hold
 // (log whatever you get). Builds gradually instead of assuming a 2:00 start.
 // Re-anchored after 2:06 PR (Future Soldier training). Conservative build from a
@@ -1106,248 +911,6 @@ function getCoreEndcap(week, type) {
   return items;
 }
 
-function getSpeedLadder(w) {
-  // 3 blocks, sliding by 100, deload each block's final week
-  const ladders = {
-    1:  ['100','200','100'],
-    2:  ['100','200','200','100'],
-    3:  ['100','200','300','200','100'],
-    4:  ['100','200','100'],                        // deload
-    5:  ['100','200','300','200','100'],
-    6:  ['200','300','400','300','200'],
-    7:  ['200','300','400','300','200'],
-    8:  ['100','200','300','200','100'],            // deload
-    9:  ['200','300','400','500','400','300','200'],
-    10: ['200','300','400','500','400','300','200'],
-    11: ['200','300','400','300','200'],            // deload
-    12: ['300','400','500','600','500','400','300'], // peak
-  };
-  const rungs = ladders[w];
-  const peak = Math.max.apply(null, rungs.map(Number));
-  const deload = (w === 4 || w === 8 || w === 11);
-  const block = w <= 4 ? 1 : (w <= 8 ? 2 : 3);
-  const steps = [];
-  steps.push('Recover 5 min after AMRAP, hydrate');
-  rungs.forEach(function(r, i) {
-    const last = i === rungs.length - 1;
-    steps.push(r + 'm hard' + (last ? '  →  done' : '  →  2 min rest'));
-  });
-  steps.push('Curved/self-powered belt: chase effort, not the pace number');
-  return {
-    title: 'TREADMILL SPEED LADDER — BLOCK ' + block + (deload ? ' (DELOAD)' : '') + ' — PEAK ' + peak + 'm',
-    steps: steps,
-  };
-}
-
-function getFartlek(w) {
-  // Total time +2 min/week (20 -> 42). Surge grows, rest tightens.
-  const plans = {
-    1:  { total: 15, hard: '30 sec',   easy: '2 min' },
-    2:  { total: 16, hard: '30 sec',   easy: '2 min' },
-    3:  { total: 18, hard: '45 sec',   easy: '2 min' },
-    4:  { total: 20, hard: '45 sec',   easy: '1:30 min' },
-    5:  { total: 22, hard: '1 min',    easy: '2 min' },
-    6:  { total: 24, hard: '1 min',    easy: '1:30 min' },
-    7:  { total: 26, hard: '1 min',    easy: '1:30 min' },
-    8:  { total: 28, hard: '1:30 min', easy: '2 min' },
-    9:  { total: 30, hard: '1:30 min', easy: '1:30 min' },
-    10: { total: 32, hard: '2 min',    easy: '2 min' },
-    11: { total: 34, hard: '2 min',    easy: '1:30 min' },
-    12: { total: 36, hard: '2 min',    easy: '1:30 min' },
-  };
-  const p = plans[w];
-  const middle = p.total - 10; // 5 min warm-up + 5 min cool-down
-  return {
-    title: 'FARTLEK RUN — ' + p.total + ' MIN TOTAL',
-    steps: [
-      '5 min easy warm-up jog',
-      middle + ' min fartlek: ' + p.hard + ' hard / ' + p.easy + ' easy (repeat, relaxed surges)',
-      '5 min easy cool-down jog',
-      'Keep it playful — surge to a landmark, float the recovery. Aerobic, not all-out.',
-    ],
-  };
-}
-
-function getBaseRun(w, lowImpactOK) {
-  // Time-focused, HR-capped. Distance is whatever happens.
-  const mins = w <= 4 ? '20-25 min'
-             : w <= 8 ? '25-35 min'
-             : '35-45 min';
-  const base = 'Easy cardio — ' + mins + ' @ HR < 155 bpm. TIME, not distance.';
-  if (lowImpactOK) {
-    return base + ' RUN or ELLIPTICAL / INCLINE WALK — pick based on how your knees feel. Watch resistance so easy stays easy.';
-  }
-  return base + ' Walk portions if needed to hold the HR cap — that is correct, not cheating.';
-}
-
-function getRuck(w) {
-  // Loaded backpack. Start light, build. Army standard is 35lb but we earn it.
-  const plans = {
-    1:  { wt: '20 lbs', dist: '2 miles',   pace: '~20 min/mi' },
-    2:  { wt: '20 lbs', dist: '2.5 miles', pace: '~20 min/mi' },
-    3:  { wt: '25 lbs', dist: '2.5 miles', pace: '~19 min/mi' },
-    4:  { wt: '25 lbs', dist: '3 miles',   pace: '~19 min/mi' },
-    5:  { wt: '25 lbs', dist: '3.5 miles', pace: '~18 min/mi' },
-    6:  { wt: '30 lbs', dist: '3.5 miles', pace: '~18 min/mi' },
-    7:  { wt: '30 lbs', dist: '4 miles',   pace: '~18 min/mi' },
-    8:  { wt: '30 lbs', dist: '4.5 miles', pace: '~17 min/mi' },
-    9:  { wt: '35 lbs', dist: '4.5 miles', pace: '~17 min/mi' },
-    10: { wt: '35 lbs', dist: '5 miles',   pace: '~16 min/mi' },
-    11: { wt: '35 lbs', dist: '5 miles',   pace: '~16 min/mi' },
-    12: { wt: '35 lbs', dist: '6 miles',   pace: '~15 min/mi' },
-  };
-  return plans[w];
-}
-
-function getHybridData(block) {
-  const w = block.num;
-  const bp  = hybridLift('bench', w);
-  const sq  = hybridLift('squat', w);
-  const dl  = hybridLift('deadlift', w);
-  const ohp = hybridLift('ohp', w);
-  const longMi   = longRunMiles(w);
-  const hyroxDL  = Math.round(ORM.deadlift * 0.6 / 5) * 5;
-  const kbWt     = w <= 4 ? '35' : '53';
-  const boxReps  = String(10 + Math.max(0, (w - 4) * 2));
-  const plankTgt = PLANK_TARGETS[w - 1];
-
-  function pyr(top, n) {
-    const arr = [];
-    for (let i = n-1; i >= 0; i--) arr.push(Math.round((top * (1 - i * 0.08)) / 5) * 5);
-    return arr.join(' / ') + ' lbs';
-  }
-
-  const speedWorkouts = [
-    { title: 'SPEED — EX 3',     steps: ['1.5km warm-up easy', '200m fast x2 (1 min rest)', '400m fast x2 (90sec rest)', '800m fast x2 (2 min rest)', '1.5km cool-down easy'] },
-    { title: 'SPEED — EX 4',     steps: ['2km warm-up easy', '400m fast x3 (1 min rest)', '800m fast x4 (90sec rest)', '2km cool-down easy'] },
-    { title: 'TEMPO — EX 1',     steps: ['5 min warm-up easy', '10 min tempo / 2 min easy (x3)', '10 min cool-down easy'] },
-    { title: 'TEMPO — EX 5',     steps: ['5 min warm-up easy', '5 min tempo / 1 min walk (x5)', '10 min cool-down easy'] },
-    { title: 'SPEED — EX 5',     steps: ['1.5km warm-up', '1km fast x2 (2 min rest)', '800m fast x2 (90sec rest)', '600m fast x2 (1 min rest)', '1.5km cool-down'] },
-    { title: 'TEMPO — EX 2',     steps: ['2km warm-up easy', '8km at tempo pace', '2km cool-down easy'] },
-    { title: 'SPEED — EX 1 ADV', steps: ['2km warm-up', '1.5km fast (90sec rest)', '1km fast x4 (1 min rest)', '800m fast x3 (1 min rest)', '2km cool-down'] },
-    { title: 'TEMPO — EX 3',     steps: ['2km warm-up easy', '20 min tempo sustained', '2km cool-down easy'] },
-    { title: 'SPEED — EX 6',     steps: ['2km warm-up', '2km fast x2 (3 min rest)', '1km fast x3 (2 min rest)', '2km cool-down'] },
-    { title: 'TEMPO — EX 6',     steps: ['3km warm-up easy', '25 min tempo sustained', '2km cool-down easy'] },
-    { title: 'SPEED — ADVANCED', steps: ['2km warm-up', '3km fast (2 min rest)', '2km fast x2 (90sec rest)', '1km fast x2 (1 min rest)', '2km cool-down'] },
-    { title: 'RACE SIMULATION',  steps: ['2km easy warm-up', '10km at race/max effort pace', 'Walk cool-down + 2km easy', 'Final benchmark — leave nothing.'] },
-  ];
-
-  return {
-    monday: {
-      day: 'MONDAY', focus: 'BACK + PULL',
-      amRun: getBaseRun(w),
-      kbPrime: false,
-      lifts: [
-        { name: 'WIDE GRIP PULL-UPS',      note: '50 total reps — break as needed',      sets: '5', reps: '10 (50 total)', lbs: 'BW',                             hybrid: true },
-        { name: 'BENT OVER BARBELL ROWS',  note: 'Back thickness, overhand',             sets: '4', reps: '10-12',        lbs: String(Math.round(dl*.55/5)*5),    hybrid: false },
-        { name: 'WIDE GRIP LAT PULLDOWN',  note: 'Full stretch at top',                 sets: '4', reps: '10-12',        lbs: String(Math.round(bp*.55/5)*5),    hybrid: false },
-        { name: 'CABLE ROWS (CLOSE GRIP)', note: 'Single arm',                          sets: '4', reps: '8-10ea',       lbs: 'Mod',                             hybrid: false },
-        { name: 'FACE PULLS',              note: 'Rear delts + upper back — elbows high', sets: '4', reps: '12-15',      lbs: 'Mod',                             hybrid: false },
-        { name: 'CABLE ROPE PULLOVERS',    note: '',  ss: 'A', ssPos: 'first',          sets: '4', reps: '8-10',         lbs: 'Mod',                             hybrid: false },
-        { name: 'DB ROWS',                 note: '',  ss: 'A', ssPos: 'last',           sets: '4', reps: '8-10ea',       lbs: String(Math.round(bp*.35/5)*5),    hybrid: false },
-        { name: 'SEATED INCLINE DB CURLS', note: 'Elbows BEHIND body — max stretch',    sets: '4', reps: '10-12ea',      lbs: '30',                              hybrid: false },
-        { name: 'PREACHER CURLS',          note: 'Elbows IN FRONT — peak contraction',  sets: '3', reps: '10-12',        lbs: 'Mod',                             hybrid: false },
-      ],
-      core: getCoreEndcap(w, 'upper'),
-      cooldown: ['FOAM ROLL LATS', 'DEAD HANGS 3x30sec', 'STATIC STRETCH'],
-    },
-    tuesday: {
-      day: 'TUESDAY', focus: 'FARTLEK + LEGS',
-      amRun: getFartlek(w),
-      kbPrime: false,
-      lifts: [
-        { name: 'BARBELL SQUATS (PYRAMID)', note: '6 sets — ' + pyr(sq, 6),                    sets: '6', reps: '12-10-8-6-5-5', lbs: pyr(sq, 6),                       hybrid: false },
-        { name: 'SINGLE-LEG LEG PRESS',     note: 'Per side. Start 45+25/side, build over the block.', sets: '4', reps: '10-12ea', lbs: (45 + 25 + Math.floor((w-1)/2)*10) + '/side', hybrid: true },
-        { name: 'CONVENTIONAL DEADLIFTS',   note: 'Heavy hinge. Warm up the posterior chain before top sets.', sets: '4', reps: '6-8', lbs: String(Math.round(dl*.85/5)*5),   hybrid: true },
-        { name: 'SEATED QUAD EXTENSIONS',   note: 'Control the negative',                     sets: '5', reps: '8-10',            lbs: 'Mod',                            hybrid: false },
-        { name: 'LYING HAMSTRING CURLS',    note: '',                                          sets: '4', reps: '8-10',            lbs: 'Mod',                            hybrid: false },
-        { name: 'WALKING LUNGES',           note: 'Alternate legs, long stride',              sets: '4', reps: '10ea',            lbs: '35-53',                          hybrid: true },
-        { name: 'BACK EXTENSIONS',          note: 'Posterior chain / lower back — squeeze glutes at top', sets: '4', reps: '12-15', lbs: 'BW or plate',                hybrid: false },
-      ],
-      core: getCoreEndcap(w, 'lower'),
-      cooldown: ['FOAM ROLL QUADS/HAMS', 'HIP FLEXOR STRETCH', 'PIGEON POSE'],
-    },
-    wednesday: {
-      day: 'WEDNESDAY', focus: 'CHEST + PUSH + SPRINTS',
-      amRun: getBaseRun(w, true),
-      kbPrime: true,
-      lifts: [
-        { name: 'FLAT BENCH PRESS (PYRAMID)', note: '6 sets — ' + pyr(bp, 6),         sets: '6', reps: '10-8-6-5-5-5', lbs: pyr(bp, 6),                        hybrid: false },
-        { name: 'INCLINE DB PRESS',           note: '',                               sets: '4', reps: '10-12',        lbs: String(Math.round(bp*.45/5)*5),    hybrid: false },
-        { name: 'INCLINE FLY (MACHINE)',      note: 'Solo — use the EOS pec/incline fly machine', sets: '4', reps: '10-12', lbs: 'Mod',                        hybrid: false },
-        { name: 'LANDMINE PRESS',             note: '', ss: 'B', ssPos: 'first',     sets: '4', reps: '8-10',         lbs: String(Math.round(ohp*.5/5)*5),    hybrid: false },
-        { name: 'PUSH-UPS',                   note: 'Max reps each set', ss: 'B', ssPos: 'last', sets: '4', reps: 'Max', lbs: 'BW',                            hybrid: true },
-        { name: 'CHEST DIPS',                 note: 'Lean forward', ss: 'C', ssPos: 'first', sets: '4', reps: '8-10',  lbs: 'BW',                              hybrid: false },
-        { name: 'SINGLE-ARM DB PEC FLY',      note: 'On bench, one arm at a time — deep stretch. (Standing fly = fallback)', ss: 'C', ssPos: 'last', sets: '4', reps: '10-12ea', lbs: '20', hybrid: false },
-      ],
-      speedWork: { title: '8x100m ALL-OUT SPRINTS', steps: ['8 x 100m all-out sprints', '60-90 sec rest between', 'Focus on acceleration mechanics'] },
-      core: getCoreEndcap(w, 'upper'),
-      cooldown: ['CHEST STRETCH', 'SHOULDER CIRCLES', 'PLANK 3x30'],
-    },
-    thursday: {
-      day: 'THURSDAY', focus: 'HYROX AMRAP + SPEED',
-      amRun: 'No easy cardio today — save legs for the treadmill ladder',
-      kbPrime: true,
-      hyrox: {
-        title: 'HYROX AMRAP — PLATFORM STATION',
-        format: '25-Minute AMRAP — log rounds completed. All moves at the platform, no running.',
-        moves: [
-          { label: 'A1. HANG CLEAN → FRONT SQUAT', detail: '6-8 reps @ ' + Math.round(ORM.hangclean * 0.5 / 5) * 5 + ' lbs — keep moderate, form first' },
-          { label: 'A2. AUSSIE PULL-UPS',          detail: '10-12 reps — inverted rows under a bar. More volume, repeatable.' },
-          { label: 'A3. HAND RELEASE PUSH-UPS',    detail: '15-20 reps — ACFT standard, chest to floor' },
-          { label: 'A4. BOX STEP-UPS',             detail: boxReps + ' ea leg — KB/DB hold ' + kbWt + ' lbs' },
-        ],
-        note: 'Full-body loop: legs / pull / push / carry. PACE IT — aim ~4-5 min per round, steady. Better controlled than blown up in round 1. Target Wk 1 = 4+ rounds, +1 every 2 weeks, Wk 12 = 10+.',
-      },
-      speedWork: getSpeedLadder(w),
-      core: getCoreEndcap(w, 'hyrox'),
-      cooldown: ['EASY WALK 5 MIN', 'STATIC STRETCH', 'FOAM ROLL LEGS'],
-    },
-
-    friday: {
-      day: 'FRIDAY', focus: 'SHOULDERS + PULL',
-      amRun: getBaseRun(w, true),
-      kbPrime: true,
-      lifts: [
-        { name: 'STANDING MILITARY PRESS (PYRAMID)', note: '6 sets — ' + pyr(ohp, 6),      sets: '6', reps: '12-10-8-6-5-5', lbs: pyr(ohp, 6),                      hybrid: false },
-        { name: 'INCLINE BARBELL PRESS',             note: 'Swapped from DB — heavier, more stable', sets: '4', reps: '8-10',       lbs: String(Math.round(bp*.5/5)*5),    hybrid: false },
-        { name: 'SEATED DB SHOULDER PRESS',          note: '',                              sets: '4', reps: '10-12',          lbs: String(Math.round(ohp*.6/5)*5),   hybrid: false },
-        { name: 'FRONT RAISES',                      note: '', ss: 'E', ssPos: 'first',    sets: '4', reps: '10-12',          lbs: '15-20',                          hybrid: false },
-        { name: 'REAR DELT FLYS',                    note: 'Balances front delt work — bent over or machine', ss: 'E', ssPos: 'last', sets: '4', reps: '12-15', lbs: 'Light',              hybrid: false },
-        { name: 'CABLE LATERAL RAISES',              note: 'Solo — cable, light + strict',  sets: '4', reps: '12-15',          lbs: 'Light',                          hybrid: false },
-        { name: 'UPRIGHT ROWS',                      note: '', ss: 'F', ssPos: 'first',    sets: '4', reps: '10-12',          lbs: 'Mod',                            hybrid: false },
-        { name: 'CABLE SKULL CRUSHERS',              note: '', ss: 'F', ssPos: 'last',     sets: '4', reps: '10-12',          lbs: 'Mod',                            hybrid: false },
-        { name: 'CABLE TRICEP PUSHDOWNS',            note: 'Tricep finisher',              sets: '4', reps: '12-15',          lbs: 'Mod',                            hybrid: false },
-        { name: 'BARBELL SHRUGS',                    note: 'TRAPS — hold 1 sec at top, no rolling', sets: '4', reps: '12-15',  lbs: String(Math.round(dl*.5/5)*5),    hybrid: false },
-        { name: 'WIDE GRIP PULL-UPS (2ND SESSION)',  note: '50 total — second pull day',   sets: '5', reps: '10 (50 total)',   lbs: 'BW',                             hybrid: true },
-      ],
-      core: getCoreEndcap(w, 'upper'),
-      cooldown: ['BAND PULL-APARTS 3x20', 'CHEST OPENER STRETCH', 'CORE CIRCUIT'],
-    },
-    saturday: {
-      day: 'SATURDAY', focus: 'LONG RUN or RUCK',
-      longRun: { miles: longMi, note: 'Easy aerobic pace (HR < 155). No lifting today. Carb load night before. Electrolytes during.' },
-      ruck: getRuck(w),
-      cooldown: ['10 MIN WALK COOL-DOWN', 'FOAM ROLL FULL BODY', 'HYDRATE + REFUEL'],
-    },
-    sunday: {
-      day: 'SUNDAY', focus: 'RECOVERY + CORE',
-      recovery: [
-        '12,000 steps — long walk',
-        'Full body stretching — 20 min',
-        'Sauna or ice bath (optional)',
-        'Meal prep for the week',
-      ],
-      core: [
-        { name: 'AB WHEEL / ROLLOUTS',     detail: '5 sets to failure' },
-        { name: 'HANGING LEG RAISES',      detail: '4x5 reps + oblique tuck variation' },
-        { name: 'SEATED STIFF LEG RAISES', detail: '4x10-12 (superset w/ knee tucks)' },
-        { name: 'CABLE OBLIQUE CRUNCHES',  detail: '4x8-10 each side' },
-        { name: 'PLANK — ACFT TARGET',     detail: plankTgt + ' (week ' + w + ' goal)' },
-      ],
-    },
-  };
-}
 // ============================================================
 // SHIP PREP — 15 WEEKS (Mon Oct 12, 2026 → Sun Jan 24, 2027 · BCT ships Mon Jan 25)
 // ============================================================
@@ -1360,15 +923,15 @@ function getHybridData(block) {
 // So the run and the plank are the program. Lifting is maintenance (two short sessions) and
 // rucks hold at 35–40 lb, 10 mi max, so he ships healthy. Weeks 1–2 are unchanged (already logged).
 // Point cutoffs below are approximate — check them against the army.mil AFT scoring scales (32-36).
-// Fits the real week: Future Soldier Mon (run) + Wed (classroom), track with the team Tue/Thu,
-// Friday and Sunday off.
+// Weeks 1–4 fit the old week (Future Soldier Mon + Wed, track Tue/Thu). From Wed of week 4 the week is
+// track Mon + Wed, Future Soldier Thu, with circuits added: see SHIP PREP REMIX below getRgrData().
 const RGR_WEEKS = [
   { type: 'TEST',   tag: 'BASELINE',                note: 'Test week. Log every result in YOUR NUMBERS — paces and reps for the next 7 weeks come from them.' },
   { type: 'TRAVEL', tag: 'CONFERENCE WEEK',         note: 'Art conference Mon–Thu. Monday: real gym before the 4 pm hotel check-in. Tue/Wed: hotel sessions, 30 min. Saturday ruck is back to normal.' },
   { type: 'BUILD',  tag: 'BUILD 1',                 note: 'Ship Prep starts. The run and the plank are the program now — lifting just keeps what you have.' },
-  { type: 'BUILD',  tag: 'BUILD 1',                 note: 'If Thursday\'s tempo feels like a race, Tuesday was too hard. Easy days stay easy.' },
+  { type: 'BUILD',  tag: 'BUILD 1',                 note: 'New week from Wednesday: track Mon + Wed, home circuit Thu (Future Soldier is classroom now). Circuits are light and fast — every rep clean, rest only between rounds.' },
   { type: 'BUILD',  tag: 'BUILD 1 — PEAK',          note: 'Biggest week of block 1. Sunday: InBody scan #1 — morning, fasted, before training.' },
-  { type: 'TEST',   tag: 'CHECKPOINT — 2-MILE · PLANK · SDC', note: 'Tuesday: 2-mile time trial. Wednesday: plank max + sprint-drag-carry. Log them — every pace updates.' },
+  { type: 'TEST',   tag: 'CHECKPOINT — 2-MILE · PLANK · SDC', note: 'Monday: 2-mile time trial with the team. Wednesday: plank max + sprint-drag-carry. Log them — every pace updates.' },
   { type: 'DELOAD', tag: 'THANKSGIVING DELOAD',     note: 'No team practice — run solo. Half the volume, same habits. One big meal is fine; four days of them is the cut gone.' },
   { type: 'BUILD',  tag: 'BUILD 2',                 note: 'New paces from the checkpoint. Same structure, faster numbers.' },
   { type: 'BUILD',  tag: 'BUILD 2',                 note: 'Sunday: InBody scan #2. Muscle should hold near 120 lb while fat drops.' },
@@ -1720,7 +1283,7 @@ function getRgrData(w) {
   // FRIDAY — OFF (build weeks: an earned add-on, never a default)
   const earned = wk.type === 'BUILD';
   d.friday = { day: 'FRIDAY', focus: earned ? 'OFF · EARNED RUN' : 'OFF', time: 'OPTIONAL',
-    recovery: (earned ? ['EARNED ONLY — Thursday felt easy AND feet/knees 3/10 or better: 30-40 min easy run (' + rgrEasy().replace('Easy = ', '').replace('.', '') + ')'] : [])
+    recovery: (earned ? ['EARNED ONLY — Wednesday\'s run felt easy AND feet/knees 3/10 or better: 30-40 min easy run (' + rgrEasy().replace('Easy = ', '').replace('.', '') + ')'] : [])
       .concat(['Otherwise off. You earned it.', 'Optional: 20-30 min walk', '10 min mobility: hips, calves, feet']) };
 
   // SATURDAY — RUCK, LONG RUN, or the mock AFT
@@ -1764,8 +1327,187 @@ function getRgrData(w) {
       .concat(['Chores, errands, planning — no training.', 'Feet check: blisters, nails, hot spots', 'Lay out Monday\'s gear tonight']),
     checkin: true };
 
+  rgrRemix(w, d);
   Object.keys(d).forEach(function(k){ d[k].week = wk; });
   return d;
+}
+
+// ============================================================
+// SHIP PREP REMIX (Nov 4, 2026): week 4 from Wednesday, then weeks 5–15
+// ============================================================
+// The week changed: track with the team Mon + Wed (Tue optional, the kids want extra), Future Soldier on Thu
+// (classroom, so not a workout). Zach wanted circuits and calisthenics, light loads and short rest, in place of
+// the short maintenance lifts. What stays fixed: the 2-mile and the plank are still the gap to AFT 465, so the hard
+// run and the plank work keep their place, and the circuits work around them.
+//   MON  track: the hard run (intervals) → school weight room: plank + UPPER circuit
+//   TUE  optional easy run with the kids + grease the groove
+//   WED  track: tempo or easy → weight room: trap bar (the one heavy thing, capped at 340) + LOWER circuit + SDC
+//   THU  home (35 lb KB, mat, 10 lb sand ball): COMBAT circuit + the long plank. Future Soldier class before or after.
+//   FRI off (earned run) · SAT ruck / long run · SUN off + study (unchanged)
+// Legs get hit on the same days as the hard runs, so the easy days stay easy.
+// These days log under their own keys (`-r`), so anything logged on the old layout stays where it was.
+const RMX_ROUNDS = { 4: 3, 5: 4, 6: 2, 7: 2, 8: 3, 9: 4, 10: 4, 11: 2, 12: 4, 13: 2, 14: 3, 15: 1 };
+function rmxRest(w) { return w <= 7 ? '90 SEC' : w <= 11 ? '75 SEC' : '60 SEC'; }
+function rmxItems(rows) { return rows.map(function(x){ return { name: x[0], detail: x[1] }; }); }
+const RMX_LOAD = 'Light: pick a weight you could do ~25 times, stop at the reps listed. Move station to station; rest only after the round.';
+
+function rmxUpper(w, rounds) {
+  const a = w % 2 === 0, pu = rgrPct('chins', 0.5, '4');
+  const rows = a ? [
+    ['DB BENCH PRESS', '15'],
+    ['PULL-UPS (DEAD HANG)', pu],
+    ['DB PUSH PRESS', '12'],
+    ['ONE-ARM DB ROW', '12 ea'],
+    ['DIPS', '12-15 · bench dips if the bars are taken'],
+    ['FARMER CARRY', '50m · 2x50'],
+  ] : [
+    ['INCLINE DB PRESS', '15'],
+    ['INVERTED ROW', '12-15 · bar in the rack at hip height, or TRX'],
+    ['DB ARNOLD PRESS', '12'],
+    ['CHIN-UPS', pu],
+    ['FACE PULLS', '20 · band or cable · shoulders for the ruck'],
+    ['SUITCASE CARRY', '50m ea · one heavy DB, don\'t lean'],
+  ];
+  const finisher = rounds >= 3 ? (a ? ' Finisher: 50 hand-release push-ups for time, any sets.' : ' Finisher: 3 x 30 sec dead hang (grip for pull-ups and the ruck).') : '';
+  return { label: 'upper circuit ' + (a ? 'a — push / pull' : 'b — shoulders / back / carry'),
+    title: rounds + ' ROUND' + (rounds > 1 ? 'S' : '') + ' · REST ' + rmxRest(w) + ' AFTER EACH ROUND',
+    items: rmxItems(rows), note: RMX_LOAD + finisher };
+}
+function rmxLower(w, rounds) {
+  const a = w % 2 === 0;
+  const rows = a ? [
+    ['GOBLET SQUAT', '15 · KB or DB'],
+    ['WALKING LUNGES', '20 steps · bodyweight'],
+    ['KB SWINGS', '20 · snap the hips, arms just hold on'],
+    ['SINGLE-LEG RDL', '10 ea · light DB'],
+    ['CALF RAISES', '20 · slow, full stretch · shins and Achilles for the miles'],
+  ] : [
+    ['STEP-UPS', '10 ea · knee-height box'],
+    ['DB REVERSE LUNGE', '10 ea · easier on the knees than forward'],
+    ['KB SWINGS', '20'],
+    ['NORDIC NEGATIVES', '5 · lower as slow as you can · hamstrings for sprinting'],
+    ['COPENHAGEN PLANK', '20 sec ea · inner thigh, groin insurance for the track'],
+  ];
+  return { label: 'lower circuit ' + (a ? 'a' : 'b') + ' — light, after the run',
+    title: rounds + ' ROUND' + (rounds > 1 ? 'S' : '') + ' · REST ' + rmxRest(w) + ' AFTER EACH ROUND',
+    items: rmxItems(rows), note: RMX_LOAD + ' Your legs already ran today: smooth reps, nothing to failure.' };
+}
+// Thursday at home: three formats in turn, so it doesn't go stale
+function rmxHome(w, light) {
+  if (light) return { label: 'home — easy emom', title: 'EMOM 12 MIN · EASY',
+    items: rmxItems([['MIN 1 · KB SWINGS', '12'], ['MIN 2 · PUSH-UPS', '10'], ['MIN 3 · GOBLET SQUAT', '10 · 35 KB'], ['MIN 4 · DEAD BUGS', '8 ea']]),
+    note: 'Three rounds. Move, breathe, done.' };
+  const r = RMX_ROUNDS[w], f = w % 3;
+  if (f === 0) return { label: 'home — emom (every minute on the minute)', title: 'EMOM ' + (r * 4 + 4) + ' MIN · ' + (r + 1) + ' ROUNDS',
+    items: rmxItems([['MIN 1 · KB SWINGS', '15 · 35 KB'], ['MIN 2 · HAND-RELEASE PUSH-UPS', '12-15'], ['MIN 3 · GOBLET SQUAT', '12 · 35 KB'], ['MIN 4 · SAND BALL SLAMS', '10 · 10 lb ball, squat to pick it up']]),
+    note: 'Start each station at the top of the minute; the rest of the minute is your rest. Missing the minute = drop 2 reps next round.' };
+  if (f === 1) return { label: 'home — amrap (as many rounds as possible)', title: 'AMRAP ' + (r * 4 + 4) + ' MIN · LOG ROUNDS',
+    items: rmxItems([['KB CLEAN + PRESS', '5 ea'], ['BURPEES', '8 · step back if your feet are beat'], ['SAND BALL GROUND-TO-SHOULDER', '10 · alternate shoulders'], ['MOUNTAIN CLIMBERS', '20 · count each leg']]),
+    note: 'Steady pace you could hold all the way through. Log the rounds, and next time beat it by one.' };
+  return { label: 'home — ladder', title: '10→1 LADDER · THEN ' + Math.max(2, r - 1) + ' CORE ROUNDS',
+    items: rmxItems([['KB SWINGS + PUSH-UPS', '10 + 10, 9 + 9 … 1 + 1 (55 of each)'], ['SAND BALL RUSSIAN TWISTS', '20 · core round'], ['HOLLOW HOLD', '30 sec · core round'], ['KB HALOS', '8 ea way · core round']]),
+    note: 'Ladder for time — log it. Then the three core moves as rounds, 45 sec rest.' };
+}
+
+function rgrRemix(w, d) {
+  if (w < 4) return;
+  const wk = RGR_WEEKS[w - 1], deload = wk.type === 'DELOAD', holiday = !!RGR_HOLIDAY[w];
+  const r = RMX_ROUNDS[w], p = rgrPaces();
+  const where = holiday ? 'SOLO' : 'TRACK';
+  const gymNote = holiday ? ' School closed? Do Thursday\'s home circuit instead.' : '';
+
+  if (w >= 5) {
+    // MONDAY — the hard run, then upper body in the weight room
+    let run;
+    if (w === 6) {
+      run = { title: '2-MILE TIME TRIAL', steps: [
+        '10 min easy + drills + 3 x 20 sec strides',
+        '2 MILES (8 laps) all-out but even' + (p ? ' — lap 1 at about ' + fmtMMSS(p.goalMi / 4) + ', not faster' : ' — lap 1 no faster than the rest'),
+        'Log it in YOUR NUMBERS — every pace for weeks 8–15 comes from it.',
+        '10 min walk/jog cool-down'] };
+    } else if (w === 15) {
+      run = { title: 'EASY RUN — 20 MIN + STRIDES', steps: ['20 min easy. ' + rgrEasy(), '4 x 20 sec strides — just touch speed', 'Last track day before you ship.'] };
+    } else {
+      const iv = RGR_INTERVALS[w];
+      const steps = ['10 min easy + drills (A-skips, high knees), 3 x 20 sec strides',
+        iv.reps + ' x ' + iv.label + ' ' + rgrRepPace(iv.m, iv.fast) + ' — rest ' + iv.rest];
+      if (iv.note && !/Hotel/.test(iv.note)) steps.push(iv.note);
+      steps.push('10 min easy cool-down');
+      run = { title: 'INTERVALS — ' + iv.reps + ' x ' + iv.label, steps: steps };
+    }
+    const testWk = w === 6 || w === 13 || w === 15;
+    d.monday = { day: 'MONDAY', focus: where + ' + UPPER', time: w === 15 ? '~40 MIN' : '~80 MIN', v2: true, runFirst: true, run: run,
+      liftLabel: 'weight room — after the track',
+      lifts: [{ name: 'PLANK (FIRST IN THE WEIGHT ROOM)', note: 'AFT form, before the push-ups tire your shoulders.', sets: testWk ? '1' : '3',
+        reps: testWk ? '1:00' : rgrPlank(0.6, w), lbs: 'BW', rest: '60 SEC' }],
+      circuits: [rmxUpper(w, r)],
+      fuel: RGR_FUEL,
+      pm: (w === 6 ? 'Test day: run it with the team, then a light upper circuit — 2 rounds, easy.' : holiday ? 'No team practice — solo at the track.' : 'Run your reps; the kids run theirs. Then the weight room.') + gymNote };
+
+    // TUESDAY — optional, easy
+    if (holiday || w === 13 || w === 15) {
+      d.tuesday = { day: 'TUESDAY', focus: 'OFF', time: 'OPTIONAL', v2: true,
+        recovery: ['Off. ' + (w === 13 ? 'Mock AFT Saturday — bank the rest.' : w === 15 ? 'Ship week — bank the rest.' : 'No team practice this week.'), 'Optional: 20-30 min walk', '10 min mobility: hips, calves, feet'] };
+    } else {
+      d.tuesday = { day: 'TUESDAY', focus: 'OPTIONAL · EASY', time: '~35 MIN', v2: true,
+        run: { title: 'EASY RUN WITH THE KIDS — 20-30 MIN (OPTIONAL)', steps: [
+          'Only if Monday\'s legs feel fine — shins, knees and feet 3/10 or better. Otherwise rest; that\'s the plan, not a skip.',
+          rgrEasy() + ' Time, not distance.',
+          'Run with them, not against them. No strides.'] },
+        core: [
+          { name: 'PULL-UPS', detail: '4 x ' + rgrPct('chins', 0.5, '3') + ' — spread through practice' },
+          { name: 'HAND-RELEASE PUSH-UPS', detail: '3 x 15 — crisp' },
+        ] };
+    }
+  }
+
+  // WEDNESDAY — track (tempo or easy), then trap bar + lower circuit + SDC
+  const tempo = w === 4 ? null : RGR_TEMPO[w], easy = w === 4 ? 25 : RGR_EASY_MIN[w];
+  const wrun = tempo ? { title: 'TEMPO — ' + tempo + ' MIN', steps: [
+      '10 min easy + 4 x 20 sec strides',
+      tempo + ' min steady' + (p ? ' at ' + fmtMMSS(p.tempoMi) + '/mi' : '') + ' — comfortably hard: you could say a sentence, not a paragraph.',
+      '10 min easy cool-down'] }
+    : { title: 'EASY RUN — ' + easy + ' MIN', steps: [easy + ' min easy. ' + rgrEasy() + ' Time, not distance.',
+      w === 4 ? 'Easy today — you ran intervals yesterday.' : w === 15 ? '4 x 200m relaxed, 2 min walk — just touch speed.' : 'Finish with 4 x 20 sec strides'] };
+  if (w === 6) {
+    d.wednesday = { day: 'WEDNESDAY', focus: 'CHECKPOINT — PLANK + SDC', time: '~60 MIN', v2: true, runFirst: true,
+      run: { title: 'EASY RUN — 20 MIN', steps: ['20 min easy with the team. ' + rgrEasy(), 'Then plank, then SDC.'] },
+      liftLabel: 'test',
+      lifts: [{ name: 'PLANK — MAX', note: 'AFT form: forearms down, straight line, hold until the form breaks. Log it.', sets: '1', reps: 'MAX', lbs: 'BW', rest: '10 MIN' }],
+      sdc: { title: 'SPRINT-DRAG-CARRY — 1 ROUND FOR TIME', items: RGR_SDC, note: 'Full effort. Log it in YOUR NUMBERS.' } };
+  } else if (w === 13 || w === 15) {
+    d.wednesday = { day: 'WEDNESDAY', focus: w === 13 ? 'LIGHT — MOCK WEEK' : 'TAPER', time: '~35 MIN', v2: true, runFirst: true, run: wrun,
+      liftLabel: 'weight room — just move',
+      lifts: [{ name: 'GOBLET SQUAT', note: 'Light — just move.', sets: '2', reps: '8', lbs: '50' },
+              { name: 'PLANK', note: 'Easy.', sets: '2', reps: '1:00', lbs: 'BW' }],
+      sdc: w === 13 ? { title: 'SDC — 1 WALK-THROUGH ROUND', items: RGR_SDC, note: 'Practice the turns at 70%. No racing — Saturday counts.' } : null };
+  } else {
+    const sdcTitle = RGR_SDC_PLAN[w];
+    const dl = deload ? '315' : w === 12 ? '340' : '315-340';
+    d.wednesday = { day: 'WEDNESDAY', focus: where + ' + LOWER', time: '~85 MIN', v2: true, runFirst: true, run: wrun,
+      liftLabel: 'weight room — the one heavy thing, then the circuit',
+      lifts: [
+        { name: 'TRAP BAR DEADLIFT', aft: true, note: 'The only heavy lift left — it keeps the AFT max. Ramp: 135×5, 225×3, 275×2, then work sets. Cap 340: the AFT stops scoring there.', sets: '2', reps: '3', lbs: dl, rest: '2-3 MIN' },
+        { name: 'WEIGHTED PLANK', note: 'Plate on your upper back, AFT form. Makes the bodyweight plank feel light.', sets: deload ? '2' : '3', reps: '45 SEC', lbs: w <= 5 ? '25' : w <= 10 ? '35' : '45', rest: '60 SEC' },
+      ],
+      circuits: [rmxLower(w, sdcTitle && r > 2 ? r - 1 : r)],
+      sdc: sdcTitle ? { title: sdcTitle, items: RGR_SDC, note: 'After the circuit. No sled? A 45 lb plate on a towel or rope works.' }
+        : { title: 'ACCELERATION — SDC BUILDING BLOCKS', items: RGR_ACCEL, note: 'The SDC is won in the starts and the turns, not top speed.' },
+      fuel: RGR_FUEL,
+      pm: (holiday ? 'No team practice — solo.' : 'Run with the team first, then the weight room.') + gymNote };
+  }
+
+  // THURSDAY — home circuit + the long plank (Future Soldier is classroom)
+  if (w === 13 || w === 15) {
+    d.thursday = { day: 'THURSDAY', focus: 'OFF · MOBILITY', time: '20 MIN', v2: true,
+      recovery: [w === 13 ? 'Mock AFT is Saturday. Nothing hard.' : 'You ship Monday. Nothing hard.', '20 min mobility: hips, calves, feet, thoracic spine', 'Plank 1 x 1:00 — easy', 'Future Soldier class as normal.'] };
+  } else {
+    const light = deload || w === 6;
+    d.thursday = { day: 'THURSDAY', focus: 'HOME CIRCUIT', time: light ? '~20 MIN' : '~35 MIN', v2: true,
+      circuits: [rmxHome(w, light)],
+      core: [{ name: 'PLANK', detail: light ? '1 x 1:00 — easy' : '2 x ' + rgrPlank(0.8, w) + ' — rest 2 min. The long hold.' }],
+      pm: 'Future Soldier class is today — do this before or after, at home. Short warm-up first: 2 min jumping jacks, 10 KB halos, 10 bodyweight squats.' };
+  }
 }
 
 // ── Ship Prep rendering ──
@@ -1843,13 +1585,15 @@ function renderRgrWorkout() {
   const day = getRgrData(w)[currentDay];
   const content = document.getElementById('workout-content');
   const prefix = 'rgr-' + currentBlock + '-' + currentDay;
+  // Remixed days (Nov 4) log under their own keys, so logs from the old layout stay put. Notes keep the day's key.
+  const ip = day.v2 ? prefix + '-r' : prefix;
   let html = '';
 
   const n = new Date(), today = new Date(n.getFullYear(), n.getMonth(), n.getDate());
   const toShip = Math.round((SHIP_DATE - today) / 86400000);
   if (toShip > 0) {
     html += '<div class="section"><div class="kb-prime-box"><div class="kb-prime-title">⚡ ' + toShip + ' DAY' + (toShip > 1 ? 'S' : '') + ' TO SHIP — BCT MON JAN 25</div>'
-      + '<div style="font-size:0.85rem;color:var(--text);letter-spacing:0.5px;line-height:1.5;">Goal: AFT 465+, 80+ in every event — that also skips the tape. The 2-mile and the plank are the program; everything else is maintenance.</div></div></div>';
+      + '<div style="font-size:0.85rem;color:var(--text);letter-spacing:0.5px;line-height:1.5;">Goal: AFT 465+, 80+ in every event — that also skips the tape. The 2-mile and the plank are the program. The circuits keep the muscle and the engine while you cut.</div></div></div>';
   }
   html += rgrNumbersCard();
   html += '<div class="section"><div class="info-box">WEEK ' + w + ' · ' + day.week.tag + ' · ' + day.time + '<br><span style="color:var(--text-dim)">' + day.week.note + '</span></div></div>';
@@ -1875,17 +1619,26 @@ function renderRgrWorkout() {
     return;
   }
 
+  const runHtml = day.run ? '<div class="section"><div class="section-label">// ' + day.run.title.toLowerCase() + '</div>' + rgrRunCard(day.run, ip) + '</div>' : '';
+  const fuelHtml = day.fuel ? '<details class="rgr-numbers rgr-fuel"><summary>// FUEL + HYDRATE — read before you run</summary>'
+      + '<div style="padding:0 12px 4px">' + rgrList(day.fuel, ip, 'fuel', 'BEFORE · DURING · AFTER', true) + '</div>'
+      + '<div class="rgr-num-foot">' + RGR_CRAMP + '</div></details>' : '';
+  if (day.runFirst) html += fuelHtml + runHtml;
   if (day.lifts) {
-    html += renderGymWarmup();
-    html += '<div class="section"><div class="section-label">// lift — short and compound</div>' + renderLiftTable(day.lifts, prefix, null) + '</div>';
+    if (!day.runFirst) html += renderGymWarmup();
+    html += '<div class="section"><div class="section-label">// ' + (day.liftLabel || 'lift — short and compound') + '</div>' + renderLiftTable(day.lifts, ip, null) + '</div>';
   }
+  (day.circuits || []).forEach(function(c, ci) {
+    html += '<div class="section"><div class="section-label">// ' + c.label + '</div>' + rgrList(c.items, ip, 'c' + ci, c.title)
+      + '<div class="rgr-num-foot">' + c.note + '</div></div>';
+  });
   if (day.circuit) {
     html += '<div class="section"><div class="section-label">// hotel room — no gym needed</div>' + rgrList(day.circuit.items, prefix, 'hotel', day.circuit.title)
       + '<div class="rgr-num-foot">' + day.circuit.note + '</div></div>';
   }
   if (day.sdc) {
     html += '<div class="section"><div class="section-label">// sprint-drag-carry — aft event 3</div>'
-      + rgrList(day.sdc.items, prefix, 'sdc', day.sdc.title)
+      + rgrList(day.sdc.items, ip, 'sdc', day.sdc.title)
       + '<div class="rgr-num-foot">' + day.sdc.note + '</div></div>';
   }
   if (day.combat) {
@@ -1893,13 +1646,9 @@ function renderRgrWorkout() {
       + rgrList(RGR_CIRCUIT, prefix, 'cfa', day.combat.title)
       + '<div class="rgr-num-foot">' + day.combat.note + '</div></div>';
   }
-  if (day.fuel) {
-    html += '<details class="rgr-numbers rgr-fuel"><summary>// FUEL + HYDRATE — read before you run</summary>'
-      + '<div style="padding:0 12px 4px">' + rgrList(day.fuel, prefix, 'fuel', 'BEFORE · DURING · AFTER', true) + '</div>'
-      + '<div class="rgr-num-foot">' + RGR_CRAMP + '</div></details>';
-  }
-  if (day.run) html += '<div class="section"><div class="section-label">// ' + day.run.title.toLowerCase() + '</div>' + rgrRunCard(day.run, prefix) + '</div>';
-  if (day.core) html += '<div class="section"><div class="section-label">// ' + (currentDay === 'thursday' ? 'plank + grease the groove' : 'plank + core') + '</div>' + rgrList(day.core, prefix, 'core', currentDay === 'thursday' && w <= 2 ? 'CHIN-UPS · PUSH-UPS · CORE' : currentDay === 'thursday' ? 'PLANK · PUSH-UPS · PULL-UPS' : 'PLANK + CORE — 10 MIN') + '</div>';
+  if (!day.runFirst) html += fuelHtml + runHtml;
+  if (day.core && day.v2) html += '<div class="section"><div class="section-label">// ' + (currentDay === 'tuesday' ? 'grease the groove' : 'the long plank') + '</div>' + rgrList(day.core, ip, 'core', currentDay === 'tuesday' ? 'PULL-UPS · PUSH-UPS' : 'PLANK — AFT FORM') + '</div>';
+  else if (day.core) html += '<div class="section"><div class="section-label">// ' + (currentDay === 'thursday' ? 'plank + grease the groove' : 'plank + core') + '</div>' + rgrList(day.core, prefix, 'core', currentDay === 'thursday' && w <= 2 ? 'CHIN-UPS · PUSH-UPS · CORE' : currentDay === 'thursday' ? 'PLANK · PUSH-UPS · PULL-UPS' : 'PLANK + CORE — 10 MIN') + '</div>';
   if (day.grid) {
     html += '<div class="section"><div class="section-label">// saturdays — ruck cap 40 lb / 10 mi until bct</div><div class="mileage-grid">';
     RGR_SAT.forEach(function(r, i) {
@@ -1917,6 +1666,408 @@ function renderRgrWorkout() {
 }
 
 // ============================================================
+// OPERATOR — 12 WEEKS (added Nov 4, 2026; meant for after BCT)
+// ============================================================
+// Heavy strength, power and tactical conditioning. Every load comes from OPERATOR MAXES (`zach-op`), so after BCT
+// Zach types his new maxes and the whole plan recalculates. The start date lives there too; until it's set, the plan
+// opens on Week 1 and doesn't track today's week.
+// Main lifts work off a training max (90% of the 1RM) in three 4-week waves: fives, triples, then doubles and singles.
+// Weeks 4 and 8 deload; week 12 tests new maxes. The week: Mon lower · Tue upper · Wed engine (VO2 work) ·
+// Thu hinge + carry · Fri press + tactical circuit · Sat ruck or long run · Sun off.
+// Run paces come from the 2-mile in Ship Prep's YOUR NUMBERS (`rgr-numbers`), so there's one place to log it.
+const OP_WAVES = [   // [reps, sets, % of training max]
+  [5, 3, 70], [5, 4, 75], [5, 5, 80], [5, 3, 60],
+  [3, 4, 80], [3, 5, 85], [3, 4, 90], [3, 3, 60],
+  [2, 5, 88], [2, 4, 92], [1, 3, 95], [0, 0, 0],
+];
+const OP_WEEKS = [
+  { type: 'BUILD',  tag: 'WAVE 1 — FIVES',    note: 'Leave 2 reps in the tank on every set. The weight climbs every week; your form doesn\'t change.' },
+  { type: 'BUILD',  tag: 'WAVE 1 — FIVES',    note: 'Same lifts, one more set.' },
+  { type: 'BUILD',  tag: 'WAVE 1 — PEAK',     note: 'Heaviest fives. The last set is hard but clean.' },
+  { type: 'DELOAD', tag: 'DELOAD',            note: 'Lighter and shorter, same movements. Sleep and eat — this is where the last three weeks turn into strength.' },
+  { type: 'BUILD',  tag: 'WAVE 2 — TRIPLES',  note: 'Heavier bar, fewer reps. Take the full rest.' },
+  { type: 'BUILD',  tag: 'WAVE 2 — TRIPLES',  note: 'One more set.' },
+  { type: 'BUILD',  tag: 'WAVE 2 — PEAK',     note: 'Watch bar speed: if a rep grinds, that\'s your last set.' },
+  { type: 'DELOAD', tag: 'DELOAD',            note: 'Back off before the heavy wave.' },
+  { type: 'BUILD',  tag: 'WAVE 3 — DOUBLES',  note: 'Low reps, full rest. Every jump and throw is max effort — power is speed, not fatigue.' },
+  { type: 'BUILD',  tag: 'WAVE 3 — DOUBLES',  note: 'Heavy doubles. Circuits stay hard; lifts stay crisp.' },
+  { type: 'BUILD',  tag: 'WAVE 3 — SINGLES',  note: 'Singles at 95% of the training max — heavy, not a max. Then rest up for the test.' },
+  { type: 'TEST',   tag: 'TEST WEEK',         note: 'New 1RMs: squat Mon, bench Tue, deadlift Thu, press Fri. Log them in OPERATOR MAXES and the next cycle starts from them.' },
+];
+const OP_FIELDS = [
+  { k: 'squat',    label: 'BACK SQUAT 1RM',     ph: '450' },
+  { k: 'bench',    label: 'BENCH PRESS 1RM',    ph: '315' },
+  { k: 'deadlift', label: 'TRAP BAR DEADLIFT 1RM', ph: '445' },
+  { k: 'press',    label: 'STANDING PRESS 1RM', ph: '190' },
+  { k: 'clean',    label: 'HANG POWER CLEAN 1RM', ph: '275' },
+];
+const OP_DEFAULT = { squat: ORM.squat, bench: ORM.bench, deadlift: ORM.deadlift, press: ORM.ohp, clean: ORM.hangclean };
+function opMax(k) { const n = parseInt(opCfg[k], 10); return n > 0 ? n : OP_DEFAULT[k]; }
+function opLoad(k, pct) { return String(Math.round(opMax(k) * 0.9 * pct / 100 / 5) * 5); }
+function saveOpCfg(k, el) {
+  opCfg[k] = el.value.trim();
+  try { localStorage.setItem('zach-op', JSON.stringify(opCfg)); } catch(e) {}
+  if (/^(start|fmStart|hwStart)$/.test(k)) { const p = todayPosition(); currentBlock = p.block; renderBlockNav(); }
+  updateProgressCards();
+  renderWorkout();
+  savePosition();
+}
+
+function opMain(name, k, w, cue) {
+  const v = OP_WAVES[w - 1];
+  if (w === 12) return { name: name + ' — TEST', note: 'Ramp: 50%×5, 70%×3, 80%×2, 90%×1, then singles in 5–10 lb jumps. Stop when one slows down a lot. Log the best in OPERATOR MAXES.', sets: '1', reps: '1RM', lbs: 'WORK UP', rest: '3-5 MIN' };
+  return { name: name, note: 'Warm-up: bar ×10, 50%×5, 65%×3, then work sets. ' + cue, sets: String(v[1]), reps: String(v[0]), lbs: opLoad(k, v[2]), rest: v[0] <= 3 ? '3 MIN' : '2-3 MIN' };
+}
+function opPower(w) { const d = OP_WEEKS[w - 1].type === 'DELOAD'; return d ? ['2', '3'] : w <= 4 ? ['3', '5'] : w <= 8 ? ['4', '3'] : w === 12 ? ['3', '2'] : ['5', '2']; }
+function opAcc(w) { const d = OP_WEEKS[w - 1].type === 'DELOAD'; return d ? ['2', '8'] : w <= 4 ? ['3', '10'] : w <= 8 ? ['3', '8'] : ['3', '6']; }
+function opRounds(w) { const t = OP_WEEKS[w - 1].type; return t === 'DELOAD' ? 2 : t === 'TEST' ? 0 : w <= 3 ? 3 : w <= 7 ? 4 : 5; }
+
+// Wednesday engine: VO2 work (paces from the 2-mile), easy in deloads, a 2-mile in test week
+const OP_ENGINE = [
+  { reps: 6,  m: 400,  label: '400m',  rest: '90 sec jog' },
+  { time: '5 x 3 MIN HARD / 2 MIN EASY' },
+  { time: '4 x 4 MIN HARD / 3 MIN EASY', note: 'The VO2 max classic. Hard = you can say two words, not a sentence.' },
+  { easy: 30 },
+  { reps: 8,  m: 400,  label: '400m',  rest: '75 sec jog' },
+  { reps: 5,  m: 1000, label: '1000m', rest: '2:30 jog' },
+  { time: '5 x 4 MIN HARD / 3 MIN EASY' },
+  { easy: 30 },
+  { reps: 10, m: 200,  label: '200m',  rest: '200m jog', fast: 4, note: 'Faster than 2-mile pace. Sharp, relaxed shoulders.' },
+  { reps: 3,  m: 1609, label: '1 mile', rest: '3 min jog' },
+  { reps: 6,  m: 400,  label: '400m',  rest: '2 min jog', fast: 2 },
+  { test: true },
+];
+// Friday tactical circuits, in turn
+const OP_CIRCUITS = [
+  { name: 'SANDBAG SPRINTS', rest: '90 SEC', rows: [['100M SPRINT', 'all out'], ['SANDBAG CLEAN TO SHOULDER', '10 · 60–80 lb, alternate shoulders (no bag: DB clean)'], ['BURPEES', '10']] },
+  { name: 'CARRY MEDLEY', rest: '2 MIN', rows: [['FARMER CARRY', '50m · heavy, 2x70+'], ['SANDBAG BEAR HUG CARRY', '50m'], ['SLED DRAG, BACKWARD', '50m'], ['KB OVERHEAD CARRY', '25m ea arm']] },
+  { name: 'RUN-LIFT CHIPPER', rest: 'NONE — FOR TIME', rows: [['400M RUN', 'hard'], ['KB SWINGS', '30'], ['PUSH-UPS', '20'], ['PULL-UPS', '10']] },
+];
+// Saturday: ruck (15:00/mi or faster) or long easy run. Never add weight AND distance in the same week.
+const OP_SAT = [
+  { ruck: 35, mi: 4 }, { mi: 5 }, { ruck: 35, mi: 6 }, { mi: 4 },
+  { ruck: 45, mi: 6 }, { mi: 6 }, { ruck: 45, mi: 8 }, { ruck: 35, mi: 4 },
+  { ruck: 50, mi: 6 }, { mi: 7 }, { ruck: 50, mi: 8 }, { mi: 5 },
+];
+
+function getOpData(w) {
+  const wk = OP_WEEKS[w - 1], deload = wk.type === 'DELOAD', test = wk.type === 'TEST';
+  const pw = opPower(w), acc = opAcc(w), r = opRounds(w);
+  const pu = rgrPct('chins', 0.5, '5');
+  const d = {};
+  d.monday = { day: 'MONDAY', focus: test ? 'TEST — SQUAT' : 'LOWER — STRENGTH', time: '~60 MIN',
+    lifts: [
+      { name: 'BOX JUMP', note: 'Before the squat, fresh. Highest box you land quietly; step down.', sets: pw[0], reps: pw[1], lbs: 'BW', rest: '60-90 SEC' },
+      opMain('BACK SQUAT', 'squat', w, 'Below parallel, brace before every rep.'),
+      { name: 'ROMANIAN DEADLIFT', note: 'Hamstrings, not lower back. Bar slides down the thighs.', sets: test ? '2' : acc[0], reps: acc[1], lbs: 'RPE 7' },
+      { name: 'DB WALKING LUNGE', note: '', sets: test ? '2' : acc[0], reps: acc[1] + ' ea', lbs: 'DBs' },
+    ],
+    core: [{ name: 'AB WHEEL', detail: '3 x 10' }, { name: 'SIDE PLANK', detail: '2 x 45 sec ea' }] };
+  d.tuesday = { day: 'TUESDAY', focus: test ? 'TEST — BENCH' : 'UPPER — STRENGTH', time: '~60 MIN',
+    lifts: [
+      { name: 'MED BALL CHEST PASS', note: 'Into a wall, as hard as you can. No ball: plyo push-ups.', sets: pw[0], reps: pw[1], lbs: '10-20', rest: '60 SEC' },
+      opMain('BENCH PRESS', 'bench', w, 'Shoulder blades pinned, feet driving.'),
+      { name: 'WEIGHTED PULL-UPS', note: 'Dead hang. Add 5 lb when every rep is clean.', sets: acc[0], reps: w <= 4 ? '5' : '3', lbs: 'BW+' },
+      { name: 'ONE-ARM DB ROW', note: '', sets: acc[0], reps: acc[1] + ' ea', lbs: 'RPE 7' },
+      { name: 'DIPS', ss: 'O', ssPos: 'first', note: '', sets: acc[0], reps: acc[1], lbs: 'BW' },
+      { name: 'FACE PULLS', ss: 'O', ssPos: 'last', note: 'Shoulder health for the pressing and the ruck.', sets: acc[0], reps: '15', lbs: 'Light' },
+    ] };
+  const e = OP_ENGINE[w - 1];
+  let run;
+  if (e.test) run = { title: '2-MILE TIME TRIAL', steps: ['10 min easy + drills + 3 x 20 sec strides', '2 MILES all-out but even. Log it in Ship Prep\'s YOUR NUMBERS — every pace comes from it.', '10 min walk/jog cool-down'] };
+  else if (e.easy) run = { title: 'EASY RUN — ' + e.easy + ' MIN', steps: [e.easy + ' min easy. ' + rgrEasy(), 'Deload — no intervals this week.'] };
+  else if (e.time) run = { title: e.time, steps: ['10 min easy + drills + 3 x 20 sec strides', e.time.toLowerCase() + ' — hard = about 5K race effort', e.note || 'Even efforts: the last rep looks like the first.', '10 min easy cool-down'] };
+  else run = { title: 'INTERVALS — ' + e.reps + ' x ' + e.label, steps: ['10 min easy + drills + 3 x 20 sec strides', e.reps + ' x ' + e.label + ' ' + rgrRepPace(e.m, e.fast) + ' — rest ' + e.rest].concat(e.note ? [e.note] : []).concat(['10 min easy cool-down']) };
+  d.wednesday = { day: 'WEDNESDAY', focus: 'ENGINE', time: '~45 MIN', run: run,
+    core: [{ name: 'PLANK', detail: '3 x 1:00' }, { name: 'HANGING KNEE RAISES', detail: '3 x 12' }] };
+  d.thursday = { day: 'THURSDAY', focus: test ? 'TEST — DEADLIFT' : 'HINGE + CARRY', time: '~60 MIN',
+    lifts: [
+      { name: 'HANG POWER CLEAN', note: 'Explosive hips, fast elbows. Speed first — if it slows, stay at that weight.', sets: pw[0], reps: pw[1], lbs: String(Math.round(opMax('clean') * (deload ? 0.55 : w <= 4 ? 0.65 : w <= 8 ? 0.7 : 0.75) / 5) * 5), rest: '90 SEC' },
+      opMain('TRAP BAR DEADLIFT', 'deadlift', w, 'Push the floor away; lock out with the glutes.'),
+      { name: 'FRONT SQUAT', note: 'Upright torso. Second squat of the week, lighter.', sets: test ? '2' : acc[0], reps: acc[1] === '10' ? '6' : '5', lbs: 'RPE 7' },
+      { name: 'FARMER CARRY', note: 'Heavy. Grip, traps and everything that carries a ruck.', sets: '4', reps: '50m', lbs: '2x70+', rest: '90 SEC' },
+      { name: 'SLED PUSH', note: '', sets: '4', reps: '25m', lbs: 'HEAVY', rest: '90 SEC' },
+    ] };
+  const c = OP_CIRCUITS[(w - 1) % 3];
+  d.friday = { day: 'FRIDAY', focus: test ? 'TEST — PRESS' : 'PRESS + TACTICAL', time: test ? '~40 MIN' : '~60 MIN',
+    lifts: [
+      opMain('STANDING PRESS', 'press', w, 'Strict: glutes tight, no leg drive.'),
+      { name: 'WEIGHTED CHIN-UPS', note: '', sets: acc[0], reps: pu, lbs: 'BW+' },
+    ],
+    circuits: r ? [{ label: 'tactical circuit — ' + c.name.toLowerCase(), title: r + ' ROUNDS · REST ' + c.rest, items: rmxItems(c.rows),
+      note: c.rest.indexOf('TIME') >= 0 ? 'Log the total time. Next time, beat it.' : 'Rest only after the round. Log your times.' }] : [],
+    pm: test ? 'Test day — no circuit. Press, chin-ups, done.' : null };
+  const s = OP_SAT[w - 1];
+  d.saturday = s.ruck
+    ? { day: 'SATURDAY', focus: 'RUCK', time: '~' + Math.round(s.mi * 15 + 10) + ' MIN',
+        run: { title: 'RUCK — ' + s.ruck + ' LB · ' + s.mi + ' MI', steps: [s.ruck + ' lb · ' + s.mi + ' miles · 15:00/mi or faster (' + fmtMMSS(s.mi * 15 * 60) + ')', 'Walk fast, never jog downhill. Short quick steps on hills.', 'Hot spot? Stop and fix it now.'] },
+        fuel: RGR_FUEL.slice(0, 4).concat([RGR_FUEL_RUCK, RGR_FUEL[4]]) }
+    : { day: 'SATURDAY', focus: 'LONG RUN', time: '~' + Math.round(s.mi * 11 + 10) + ' MIN',
+        run: { title: 'LONG RUN — ' + s.mi + ' MI EASY', steps: [s.mi + ' miles easy. ' + rgrEasy(), 'Engine, not a test. Walk a minute when the heart rate climbs.'] },
+        fuel: RGR_FUEL.slice(0, 4).concat([RGR_FUEL_RUCK, RGR_FUEL[4]]) };
+  d.sunday = { day: 'SUNDAY', focus: 'OFF', time: '—', recovery: ['Off. No training.', 'Optional: 20-30 min walk', '10 min mobility: hips, ankles, thoracic spine', 'Feet check, lay out Monday\'s gear'] };
+  Object.keys(d).forEach(function(k){ d[k].week = wk; });
+  return d;
+}
+
+function opMaxesCard() {
+  const set = OP_FIELDS.some(function(f){ return opCfg[f.k]; });
+  const sk = opStartKey(), st = opCfg[sk];
+  let h = '<details class="rgr-numbers"' + (set && st ? '' : ' open') + '><summary>// ' + (currentProgram === 'op' ? 'OPERATOR MAXES' : 'MAXES + START') + ' ' + (st ? '— STARTS ' + st : '— SET A START DATE') + '</summary><div class="rgr-num-grid">'
+    + '<label class="rgr-num"><span>START (WEEK 1 MONDAY)</span><input type="date" value="' + (st || '') + '" onchange="saveOpCfg(\'' + sk + '\', this)"><em>until it\'s set, the plan stays on the week you pick</em></label>';
+  OP_FIELDS.forEach(function(f) {
+    h += '<label class="rgr-num"><span>' + f.label + '</span><input inputmode="numeric" value="' + (opCfg[f.k] || '') + '" placeholder="' + opMax(f.k) + '" onchange="saveOpCfg(\'' + f.k + '\', this)"><em>lb' + (opCfg[f.k] ? '' : ' · using ' + opMax(f.k) + ' (pre-cut) until you enter one') + '</em></label>';
+  });
+  return h + '</div><div class="rgr-num-foot">' + (currentProgram === 'fm' ? 'Shared with Operator and Hybrid Warrior. Functional Muscle uses 55–78% of these for its sets of 8–12.' : currentProgram === 'hybrid' ? 'Shared with Operator and Functional Muscle. Hybrid Warrior uses 60–90% of these.' : 'Shared with the other programs. Operator works off a training max of 90% of these.') + ' Enter real numbers after BCT — heavy percentages off an old max are how people get hurt. Run paces come from the 2-mile in Ship Prep.</div></details>';
+}
+
+function updateOpCards() {
+  const fm = currentProgram === 'fm', hw = currentProgram === 'hybrid';
+  const w = currentBlock + 1, wk = (fm ? FM_WEEKS : hw ? HW_WEEKS : OP_WEEKS)[currentBlock], s = (fm ? FM_SAT : hw ? HW_SAT : OP_SAT)[currentBlock];
+  const sc = fm ? FM_SCHEME[currentBlock] : hw ? HW_SCHEME[currentBlock] : null;
+  const v = sc ? [sc[1], sc[0], sc[2]] : OP_WAVES[currentBlock];   // [reps, sets, %]
+  document.getElementById('block-display').textContent = w;
+  document.getElementById('pct-display').textContent = wk.type === 'BUILD' ? v[2] + '%' : wk.type;
+  document.getElementById('progress-val').innerHTML = 'WEEK ' + w + ' <span>/ 12</span>';
+  document.getElementById('progress-bar').style.width = (w / 12 * 100) + '%';
+  document.getElementById('progress-card-2-label').textContent = '// main lifts';
+  document.getElementById('intensity-val').innerHTML = wk.type === 'TEST' ? (fm ? 'RETEST <span>BW MAX</span>' : hw ? 'TEST <span>3RM</span>' : 'TEST <span>1RM</span>') : v[1] + ' x ' + v[0] + ' <span>@ ' + v[2] + '%</span>';
+  document.getElementById('intensity-bar').style.width = (wk.type === 'TEST' ? 100 : v[2]) + '%';
+  document.getElementById('prog-card-3-label').textContent = '// saturday';
+  document.getElementById('prog-card-3-val').innerHTML = s.mi + ' <span>MI' + (s.ruck ? ' · ' + s.ruck + ' LB' : ' RUN') + '</span>';
+  document.getElementById('prog-card-3-bar').style.width = (s.mi / 10 * 100) + '%';
+}
+
+function progData(w) { return currentProgram === 'fm' ? getFmData(w) : currentProgram === 'hybrid' ? getHwData(w) : getOpData(w); }
+function renderOpWorkout() {
+  const w = currentBlock + 1, day = progData(w)[currentDay];
+  const content = document.getElementById('workout-content');
+  const prefix = currentProgram + '-' + currentBlock + '-' + currentDay;   // op-…, fm-… or hybrid-…
+  let html = opMaxesCard();
+  html += '<div class="section"><div class="info-box">WEEK ' + w + ' · ' + day.week.tag + ' · ' + day.time + '<br><span style="color:var(--text-dim)">' + day.week.note + '</span></div></div>';
+  if (day.recovery) {
+    html += '<div class="section"><div class="section-label">// off day</div><div class="cooldown-items">'
+      + day.recovery.map(function(x){ return '<div class="cooldown-item">' + x + '</div>'; }).join('') + '</div></div>';
+  }
+  if (day.lifts) {
+    html += renderGymWarmup();
+    html += '<div class="section"><div class="section-label">// ' + (currentProgram === 'fm' ? 'lift — compounds first, then the pump' : currentProgram === 'hybrid' ? 'lift — strength, then get out' : 'lift — power first, then strength') + '</div>' + renderLiftTable(day.lifts, prefix, null) + '</div>';
+  }
+  (day.circuits || []).forEach(function(c, ci) {
+    html += '<div class="section"><div class="section-label">// ' + c.label + '</div>' + rgrList(c.items, prefix, 'c' + ci, c.title) + '<div class="rgr-num-foot">' + c.note + '</div></div>';
+  });
+  if (day.fuel) html += '<details class="rgr-numbers rgr-fuel"><summary>// FUEL + HYDRATE — read before you go</summary><div style="padding:0 12px 4px">' + rgrList(day.fuel, prefix, 'fuel', 'BEFORE · DURING · AFTER', true) + '</div></details>';
+  if (day.run) html += '<div class="section"><div class="section-label">// ' + day.run.title.toLowerCase() + '</div>' + rgrRunCard(day.run, prefix) + '</div>';
+  if (day.core) html += '<div class="section"><div class="section-label">// ' + (currentProgram === 'fm' ? 'carries + loaded mobility' : currentProgram === 'hybrid' ? 'plank' : 'core') + '</div>' + rgrList(day.core, prefix, 'core', currentProgram === 'fm' ? 'CARRY · HOLD · HANG' : currentProgram === 'hybrid' ? 'AFT PLANK' : 'CORE — 10 MIN') + '</div>';
+  if (day.pm) html += '<div class="section"><div class="section-label">// note</div><div class="info-box">' + day.pm.toUpperCase() + '</div></div>';
+  html += renderNotes(prefix);
+  content.innerHTML = html;
+  attachNotes(prefix);
+}
+
+// ============================================================
+// FUNCTIONAL MUSCLE — 12 WEEKS (Nov 4, 2026; replaces Bodybuilding +, meant for after BCT)
+// ============================================================
+// Size that carries over: compound lifts first, single-leg work, carries and a short finisher every lift day,
+// arms and delts still in it. Upper/lower split, 4 lift days + an easy engine day + a Saturday ruck or run.
+// Main lifts are % of the maxes in OPERATOR MAXES (shared with Operator); its own start date is `fmStart` in `zach-op`.
+// Three 4-week blocks: 12s with a slow lowering, then 10s, then 8s, each closing one rep nearer failure.
+// Weeks 4 and 8 deload; week 12 is light lifting plus a bodyweight retest.
+// Logs use `fm-` keys. The old Bodybuilding + logs (`bct-` keys) are still in the saved data; the program
+// itself is in git history (git show 7133897:index.html, search getBCTData).
+const FM_SCHEME = [   // [sets, reps, % of 1RM, reps left in the tank]
+  [3, 12, 62, 3], [3, 12, 65, 2], [3, 12, 67, 1], [2, 10, 55, 4],
+  [4, 10, 68, 2], [4, 10, 70, 2], [4, 10, 72, 1], [2, 10, 55, 4],
+  [4, 8, 74, 2],  [4, 8, 76, 1],  [4, 8, 78, 1],  [2, 8, 55, 4],
+];
+const FM_WEEKS = [
+  { type: 'BUILD',  tag: 'BLOCK 1 — TWELVES', note: 'Three seconds down on every rep. Light enough to own it: the muscle grows from time under tension, not the number on the bar.' },
+  { type: 'BUILD',  tag: 'BLOCK 1 — TWELVES', note: 'A little more weight, one rep closer to failure.' },
+  { type: 'BUILD',  tag: 'BLOCK 1 — PEAK',    note: 'One rep left in the tank on the last set of everything.' },
+  { type: 'DELOAD', tag: 'DELOAD',            note: 'Two sets, light. Eat, sleep — growth happens this week.' },
+  { type: 'BUILD',  tag: 'BLOCK 2 — TENS',    note: 'Four sets now. Add weight when every rep of every set goes with 2 left.' },
+  { type: 'BUILD',  tag: 'BLOCK 2 — TENS',    note: 'Same plan, a bit heavier.' },
+  { type: 'BUILD',  tag: 'BLOCK 2 — PEAK',    note: 'Last sets to 1 rep left. Finishers are the conditioning — don\'t skip them.' },
+  { type: 'DELOAD', tag: 'DELOAD',            note: 'Back off before the heavy block.' },
+  { type: 'BUILD',  tag: 'BLOCK 3 — EIGHTS',  note: 'Heaviest block. Compounds first while you\'re fresh; accessories chase the pump.' },
+  { type: 'BUILD',  tag: 'BLOCK 3 — EIGHTS',  note: 'Push the main lifts. Accessories one rep from failure.' },
+  { type: 'BUILD',  tag: 'BLOCK 3 — PEAK',    note: 'Last hard week. Then the retest.' },
+  { type: 'TEST',   tag: 'RETEST',            note: 'Light lifting, plus max pull-ups, 2-min hand-release push-ups and max dips. Weigh in and take photos: this is the after picture.' },
+];
+// Saturday: moderate — this block is about building, not mileage
+const FM_SAT = [
+  { ruck: 35, mi: 4 }, { mi: 4 }, { ruck: 35, mi: 5 }, { mi: 3 },
+  { ruck: 35, mi: 5 }, { mi: 5 }, { ruck: 40, mi: 5 }, { mi: 3 },
+  { ruck: 40, mi: 6 }, { mi: 5 }, { ruck: 40, mi: 6 }, { mi: 4 },
+];
+function fmMain(name, k, w, cue) {
+  const v = FM_SCHEME[w - 1];
+  return { name: name, note: 'Leave ' + v[3] + ' rep' + (v[3] > 1 ? 's' : '') + ' in the tank. ' + cue + (w <= 3 ? ' 3 sec down.' : ''),
+    sets: String(v[0]), reps: String(v[1]), lbs: String(Math.round(opMax(k) * v[2] / 100 / 5) * 5), rest: '2 MIN' };
+}
+function fmAcc(w) { const t = FM_WEEKS[w - 1].type; return t !== 'BUILD' ? ['2', '12'] : w <= 3 ? ['3', '15'] : w <= 7 ? ['3', '12'] : ['4', '10']; }
+function fmFin(w, rows, title) { const t = FM_WEEKS[w - 1].type; return t !== 'BUILD' ? [] : [{ label: 'finisher — ready for action', title: title, items: rmxItems(rows), note: 'Hard and short. Done in 5–8 minutes.' }]; }
+
+function getFmData(w) {
+  const wk = FM_WEEKS[w - 1], a = fmAcc(w), test = wk.type === 'TEST';
+  const pu = rgrPct('chins', 0.5, '5');
+  const d = {};
+  d.monday = { day: 'MONDAY', focus: 'LOWER A — SQUAT', time: '~60 MIN',
+    lifts: [
+      fmMain('BACK SQUAT', 'squat', w, 'Below parallel.'),
+      { name: 'BULGARIAN SPLIT SQUAT', note: 'Back foot on a bench. Fixes the side that\'s behind.', sets: a[0], reps: a[1] === '15' ? '12 ea' : a[1] + ' ea', lbs: 'DBs' },
+      { name: 'ROMANIAN DEADLIFT', note: 'Long stretch in the hamstrings.', sets: a[0], reps: a[1], lbs: 'RPE 8' },
+      { name: 'NORDIC NEGATIVES', ss: 'L', ssPos: 'first', note: 'Lower as slow as you can. Hamstrings that don\'t pull when you sprint.', sets: a[0], reps: '5', lbs: 'BW' },
+      { name: 'STANDING CALF RAISE', ss: 'L', ssPos: 'last', note: 'Pause at the bottom.', sets: a[0], reps: '15', lbs: 'MOD' },
+    ],
+    circuits: fmFin(w, [['SLED PUSH', '25m heavy'], ['WALK BACK', 'that\'s the rest']], '4 ROUNDS') };
+  d.tuesday = { day: 'TUESDAY', focus: 'UPPER A — CHEST + BACK', time: '~60 MIN',
+    lifts: (test ? [{ name: 'HAND-RELEASE PUSH-UPS — 2 MIN MAX', note: 'Fresh, first thing. Log it.', sets: '1', reps: 'MAX', lbs: 'BW', rest: '5 MIN' }] : []).concat([
+      fmMain('BENCH PRESS', 'bench', w, 'Shoulder blades pinned.'),
+      { name: 'CHEST-SUPPORTED DB ROW', note: 'Squeeze at the top for a second.', sets: a[0], reps: a[1], lbs: 'RPE 8' },
+      { name: 'WEIGHTED PUSH-UPS', note: 'Plate on the back or a vest. Deep and slow.', sets: a[0], reps: a[1], lbs: '25-45' },
+      { name: 'PULL-UPS', note: 'Dead hang, full range.', sets: a[0], reps: pu, lbs: 'BW' },
+      { name: 'HAMMER CURLS', ss: 'A', ssPos: 'first', note: 'Forearms and grip, not just biceps.', sets: a[0], reps: a[1], lbs: 'DBs' },
+      { name: 'DIPS', ss: 'A', ssPos: 'last', note: '', sets: a[0], reps: a[1], lbs: 'BW' },
+    ]),
+    circuits: fmFin(w, [['PUSH-UPS', '10'], ['INVERTED ROWS', '10']], 'EVERY MINUTE FOR 6 MIN') };
+  d.wednesday = { day: 'WEDNESDAY', focus: 'ENGINE — EASY', time: '~45 MIN',
+    run: { title: 'EASY RUN — ' + (w <= 4 ? 30 : w <= 8 ? 35 : 40) + ' MIN', steps: [(w <= 4 ? 30 : w <= 8 ? 35 : 40) + ' min easy. ' + rgrEasy(), 'Zone 2 keeps the engine without eating the recovery your muscles need.'] },
+    core: [{ name: 'FARMER CARRY', detail: '4 x 50m — heavy' }, { name: 'SUITCASE CARRY', detail: '2 x 50m ea' }, { name: 'DEEP SQUAT HOLD', detail: '2 x 1:00 — hold a KB at your chest' }, { name: 'DEAD HANG', detail: '2 x 45 sec' }] };
+  d.thursday = { day: 'THURSDAY', focus: 'LOWER B — HINGE', time: '~60 MIN',
+    lifts: [
+      fmMain('TRAP BAR DEADLIFT', 'deadlift', w, 'Push the floor away.'),
+      { name: 'REVERSE LUNGE (FRONT FOOT ON A PLATE)', note: 'Deeper stretch, easy on the knees.', sets: a[0], reps: a[1] === '15' ? '12 ea' : a[1] + ' ea', lbs: 'DBs' },
+      { name: 'HIP THRUST', note: 'Pause at the top. Glutes drive everything — sprints, rucks, the deadlift.', sets: a[0], reps: a[1], lbs: 'RPE 8' },
+      { name: 'STEP-UPS', ss: 'H', ssPos: 'first', note: 'Knee-height box, drive through the heel.', sets: a[0], reps: '10 ea', lbs: 'DBs' },
+      { name: 'COPENHAGEN PLANK', ss: 'H', ssPos: 'last', note: 'Groin insurance.', sets: a[0], reps: '20 SEC ea', lbs: 'BW' },
+    ],
+    circuits: fmFin(w, [['KB SWINGS', '15'], ['BURPEES', '5']], 'EVERY MINUTE FOR 6 MIN') };
+  d.friday = { day: 'FRIDAY', focus: 'UPPER B — SHOULDERS + ARMS', time: '~60 MIN',
+    lifts: (test ? [
+      { name: 'PULL-UPS — MAX', note: 'Strict, dead hang. Log it.', sets: '1', reps: 'MAX', lbs: 'BW', rest: '5 MIN' },
+      { name: 'DIPS — MAX', note: 'Full depth. Log it.', sets: '1', reps: 'MAX', lbs: 'BW', rest: '5 MIN' }] : []).concat([
+      fmMain('STANDING PRESS', 'press', w, 'Strict: glutes tight, no leg drive.'),
+      { name: 'WEIGHTED CHIN-UPS', note: '', sets: a[0], reps: w <= 3 ? '8' : '6', lbs: 'BW+' },
+      { name: 'INCLINE DB PRESS', note: '', sets: a[0], reps: a[1], lbs: 'RPE 8' },
+      { name: 'ONE-ARM DB ROW', note: '', sets: a[0], reps: a[1] + ' ea', lbs: 'RPE 8' },
+      { name: 'LATERAL RAISES', ss: 'S', ssPos: 'first', note: 'Slow. No swing.', sets: a[0], reps: '15', lbs: 'Light' },
+      { name: 'REAR DELT FLY', ss: 'S', ssPos: 'last', note: 'Shoulders that hold up under a ruck.', sets: a[0], reps: '15', lbs: 'Light' },
+      { name: 'EZ BAR CURL', ss: 'B', ssPos: 'first', note: '', sets: a[0], reps: a[1], lbs: 'MOD' },
+      { name: 'OVERHEAD TRICEP EXTENSION', ss: 'B', ssPos: 'last', note: '', sets: a[0], reps: a[1], lbs: 'MOD' },
+    ]),
+    circuits: fmFin(w, [['SANDBAG TO SHOULDER', '5 ea side'], ['FARMER CARRY', '50m']], '4 ROUNDS · REST 60 SEC') };
+  const s = FM_SAT[w - 1];
+  const fuel = RGR_FUEL.slice(0, 4).concat([RGR_FUEL_RUCK, RGR_FUEL[4]]);
+  d.saturday = s.ruck
+    ? { day: 'SATURDAY', focus: 'RUCK', time: '~' + Math.round(s.mi * 15 + 10) + ' MIN', fuel: fuel,
+        run: { title: 'RUCK — ' + s.ruck + ' LB · ' + s.mi + ' MI', steps: [s.ruck + ' lb · ' + s.mi + ' miles · 15:00/mi or faster (' + fmtMMSS(s.mi * 15 * 60) + ')', 'Steady. This keeps your feet and back ruck-ready while you build.'] } }
+    : { day: 'SATURDAY', focus: 'LONG RUN', time: '~' + Math.round(s.mi * 11 + 10) + ' MIN', fuel: fuel,
+        run: { title: 'EASY RUN — ' + s.mi + ' MI', steps: [s.mi + ' miles easy. ' + rgrEasy()] } };
+  d.sunday = { day: 'SUNDAY', focus: 'OFF', time: '—', recovery: ['Off. No training.', 'Eat: protein at every meal — this is when you grow.', '10 min mobility: hips, shoulders, thoracic spine', 'Weigh in Sunday mornings — up 0.25–0.5 lb a week is the target while building'] };
+  Object.keys(d).forEach(function(k){ d[k].week = wk; });
+  return d;
+}
+
+// ============================================================
+// HYBRID WARRIOR — 12 WEEKS (rebuilt Nov 4, 2026; meant for after BCT)
+// ============================================================
+// Strength and engine, half and half: two strength days (squat + bench, deadlift + press), two quality runs
+// (VO2 intervals, tempo), the Hyrox AMRAP with running in it, and a long run or ruck. Operator is the strength-first
+// program and Functional Muscle the size-first one; this is the one with no weak side.
+// Main lifts are % of the shared maxes in `zach-op`; the start date is `hwStart`. Paces come from Ship Prep's 2-mile.
+// Logs use `hybrid-` keys. The Aug–Oct cycle's logs (`hyb-` keys) stay in the saved data; that program is in
+// git history (git show a634a10:index.html, search getHybridData).
+const HW_SCHEME = [   // [sets, reps, % of 1RM]
+  [4, 6, 70], [4, 6, 72], [4, 6, 75], [3, 5, 60],
+  [5, 4, 77], [5, 4, 80], [5, 4, 82], [3, 4, 60],
+  [5, 3, 85], [5, 3, 87], [4, 3, 90], [0, 0, 0],
+];
+const HW_WEEKS = [
+  { type: 'BUILD',  tag: 'BLOCK 1 — BASE',     note: 'Every session is about 60 minutes. Strength days stay short so the runs stay fast.' },
+  { type: 'BUILD',  tag: 'BLOCK 1 — BASE',     note: 'Same plan, a little more of everything. Log the AMRAP rounds — that\'s your hybrid number.' },
+  { type: 'BUILD',  tag: 'BLOCK 1 — PEAK',     note: 'Biggest week of the block.' },
+  { type: 'DELOAD', tag: 'DELOAD',             note: 'Lighter lifts, easy runs, short AMRAP. Recover.' },
+  { type: 'BUILD',  tag: 'BLOCK 2 — BUILD',    note: 'Heavier lifts, longer tempo. Hard days hard, easy days easy.' },
+  { type: 'BUILD',  tag: 'BLOCK 2 — BUILD',    note: 'If the legs are flat on Tuesday, Monday was too heavy — drop a set.' },
+  { type: 'BUILD',  tag: 'BLOCK 2 — PEAK',     note: 'Biggest week so far.' },
+  { type: 'DELOAD', tag: 'DELOAD',             note: 'Back off before the last block.' },
+  { type: 'BUILD',  tag: 'BLOCK 3 — SHARPEN',  note: 'Heavy triples, longest tempo, longest run. Sleep is training this block.' },
+  { type: 'BUILD',  tag: 'BLOCK 3 — SHARPEN',  note: 'Push it.' },
+  { type: 'BUILD',  tag: 'BLOCK 3 — PEAK',     note: 'Last hard week, then test.' },
+  { type: 'TEST',   tag: 'HYBRID TEST WEEK',   note: '3-rep maxes Mon and Thu, 2-mile Tue, AMRAP benchmark Wed. Update your maxes (3RM ÷ 0.93 ≈ 1RM) and the 2-mile, then start the next cycle.' },
+];
+// Saturday: long run builds, a ruck every few weeks
+const HW_SAT = [
+  { mi: 5 }, { ruck: 35, mi: 4 }, { mi: 6 }, { mi: 4 },
+  { mi: 7 }, { ruck: 35, mi: 6 }, { mi: 8 }, { ruck: 35, mi: 4 },
+  { mi: 9 }, { ruck: 45, mi: 6 }, { mi: 10 }, { mi: 5 },
+];
+const HW_TEMPO = [15, 18, 20, 0, 20, 22, 25, 0, 25, 28, 30, 0];
+// Wednesday AMRAP stations: A weeks and B weeks take turns
+const HW_AMRAP = [
+  [['400M RUN', 'steady — the run is part of the round'], ['HANG CLEAN → FRONT SQUAT', '6 · moderate, form first'], ['AUSSIE PULL-UPS', '12 · inverted rows under a bar'], ['HAND-RELEASE PUSH-UPS', '15'], ['BOX STEP-UPS', '10 ea · KB or DB in hand']],
+  [['400M RUN', 'steady'], ['SANDBAG LUNGES', '20 steps · bag on the shoulders'], ['WALL BALLS', '15 · 20 lb (or sand ball thrusters)'], ['SLED PUSH', '25m heavy'], ['BURPEE BROAD JUMPS', '8']],
+];
+
+function hwMain(name, k, w, cue) {
+  const v = HW_SCHEME[w - 1];
+  if (w === 12) return { name: name + ' — 3RM TEST', note: 'Ramp: 50%×5, 70%×3, 80%×2, then triples in 10 lb jumps until one slows down a lot. Log the best.', sets: '1', reps: '3RM', lbs: 'WORK UP', rest: '3-4 MIN' };
+  return { name: name, note: 'Warm-up sets first. ' + cue, sets: String(v[0]), reps: String(v[1]), lbs: String(Math.round(opMax(k) * v[2] / 100 / 5) * 5), rest: '2-3 MIN' };
+}
+
+function getHwData(w) {
+  const wk = HW_WEEKS[w - 1], deload = wk.type === 'DELOAD', test = wk.type === 'TEST';
+  const a = deload ? '2' : '3', pu = rgrPct('chins', 0.6, '6');
+  const endcap = function(type) { const c = getCoreEndcap(w, type); return { label: 'core endcap — ' + c.blockName.toLowerCase(), title: c.blockName + ' — 10 MIN', items: c.slice(), note: 'Your practice-card rotation: anti-extension, posterior chain, anti-rotation, a hip opener.' }; };
+  const d = {};
+  d.monday = { day: 'MONDAY', focus: test ? 'TEST — SQUAT · BENCH' : 'STRENGTH A', time: '~60 MIN',
+    lifts: [
+      hwMain('BACK SQUAT', 'squat', w, 'Below parallel.'),
+      hwMain('BENCH PRESS', 'bench', w, 'Pause the first rep of every set on the chest.'),
+      { name: 'PULL-UPS', note: test ? 'Max reps, strict. Log it.' : 'Add 10 lb when every rep is clean.', sets: test ? '1' : a, reps: test ? 'MAX' : pu, lbs: test ? 'BW' : 'BW+' },
+      { name: 'WALKING LUNGES', note: 'Long stride.', sets: a, reps: '10 ea', lbs: 'DBs' },
+    ],
+    circuits: [endcap('lower')] };
+  const e = OP_ENGINE[w - 1];
+  let tue;
+  if (test) tue = { title: '2-MILE TIME TRIAL', steps: ['10 min easy + drills + 3 x 20 sec strides', '2 MILES all-out but even. Log it in Ship Prep\'s YOUR NUMBERS — every pace comes from it.', '10 min walk/jog cool-down'] };
+  else if (e.easy) tue = { title: 'EASY RUN — 30 MIN', steps: ['30 min easy. ' + rgrEasy(), 'Deload — no intervals this week.'] };
+  else if (e.time) tue = { title: e.time, steps: ['10 min easy + drills + 3 x 20 sec strides', e.time.toLowerCase() + ' — hard = about 5K race effort', e.note || 'Even efforts: the last rep looks like the first.', '10 min easy cool-down'] };
+  else tue = { title: 'INTERVALS — ' + e.reps + ' x ' + e.label, steps: ['10 min easy + drills + 3 x 20 sec strides', e.reps + ' x ' + e.label + ' ' + rgrRepPace(e.m, e.fast) + ' — rest ' + e.rest].concat(e.note ? [e.note] : []).concat(['10 min easy cool-down']) };
+  d.tuesday = { day: 'TUESDAY', focus: test ? 'TEST — 2-MILE' : 'RUN — INTERVALS', time: '~45 MIN', run: tue, fuel: RGR_FUEL };
+  const mins = deload ? 15 : test ? 25 : 20 + Math.floor((w - 1) / 4) * 2;
+  d.wednesday = { day: 'WEDNESDAY', focus: test ? 'TEST — AMRAP' : 'HYROX AMRAP', time: '~' + (mins + 20) + ' MIN',
+    circuits: [{ label: 'hyrox amrap — run + stations', title: mins + '-MIN AMRAP · LOG ROUNDS', items: rmxItems(HW_AMRAP[(w - 1) % 2]),
+      note: deload ? 'Deload: steady, conversational. Nothing to prove.' : test ? 'Benchmark: same stations as week 1 — beat its rounds.' : 'Pace it: about 4–5 minutes a round. Controlled beats blown up in round 1. Aim for one more round than the last time you did these stations.' }],
+    core: [{ name: 'PLANK', detail: (PLANK_TARGETS[w - 1]) + ' — week ' + w + ' target' }] };
+  if (test) d.wednesday.circuits[0].items = rmxItems(HW_AMRAP[0]);
+  d.thursday = { day: 'THURSDAY', focus: test ? 'TEST — DEADLIFT · PRESS' : 'STRENGTH B', time: '~60 MIN',
+    lifts: [
+      hwMain('TRAP BAR DEADLIFT', 'deadlift', w, 'Push the floor away.'),
+      hwMain('STANDING PRESS', 'press', w, 'Strict: glutes tight.'),
+      { name: 'ONE-ARM DB ROW', note: '', sets: a, reps: '10 ea', lbs: 'RPE 8' },
+      { name: 'FARMER CARRY', note: 'Heavy.', sets: a, reps: '50m', lbs: '2x70+', rest: '90 SEC' },
+    ],
+    circuits: [endcap('upper')] };
+  const t = HW_TEMPO[w - 1];
+  d.friday = { day: 'FRIDAY', focus: t ? 'RUN — TEMPO' : 'RUN — EASY', time: '~' + (t ? t + 25 : 30) + ' MIN', fuel: RGR_FUEL,
+    run: t ? { title: 'TEMPO — ' + t + ' MIN', steps: ['10 min easy + 4 x 20 sec strides',
+        t + ' min steady' + (rgrPaces() ? ' at ' + fmtMMSS(rgrPaces().tempoMi) + '/mi' : '') + ' — comfortably hard: a sentence, not a paragraph.', '10 min easy cool-down'] }
+      : { title: 'EASY RUN — 30 MIN', steps: ['30 min easy. ' + rgrEasy(), test ? 'Test week — save the legs.' : 'Finish with 4 x 20 sec strides.'] } };
+  const s = HW_SAT[w - 1];
+  const fuel = RGR_FUEL.slice(0, 4).concat([RGR_FUEL_RUCK, RGR_FUEL[4]]);
+  d.saturday = s.ruck
+    ? { day: 'SATURDAY', focus: 'RUCK', time: '~' + Math.round(s.mi * 15 + 10) + ' MIN', fuel: fuel,
+        run: { title: 'RUCK — ' + s.ruck + ' LB · ' + s.mi + ' MI', steps: [s.ruck + ' lb · ' + s.mi + ' miles · 15:00/mi or faster (' + fmtMMSS(s.mi * 15 * 60) + ')', 'Walk fast, never jog downhill.'] } }
+    : { day: 'SATURDAY', focus: 'LONG RUN', time: '~' + Math.round(s.mi * 11 + 10) + ' MIN', fuel: fuel,
+        run: { title: 'LONG RUN — ' + s.mi + ' MI EASY', steps: [s.mi + ' miles easy. ' + rgrEasy(), 'Walk a minute when the heart rate climbs — that\'s allowed.', 'Carbs the night before, electrolytes during.'] } };
+  d.sunday = { day: 'SUNDAY', focus: 'RECOVERY', time: '30 MIN', recovery: ['Long walk — 10,000+ steps', '20 min full-body stretch', 'Sauna or cold plunge (optional)', 'Meal prep for the week'] };
+  Object.keys(d).forEach(function(k){ d[k].week = wk; });
+  return d;
+}
+
+// ============================================================
 // RENDER HELPERS
 // ============================================================
 
@@ -1928,31 +2079,15 @@ function renderBlockNav() {
 }
 
 function updateProgressCards() {
-  const b = BLOCKS[currentBlock];
-  document.getElementById('block-word').textContent = currentProgram === 'ranger' ? 'WEEK' : 'BLOCK';
-  if (currentProgram === 'ranger') { updateRgrCards(); return; }
-  document.getElementById('progress-card-2-label').textContent = '// intensity';
-  document.getElementById('prog-card-3-label').textContent = currentProgram === 'bct' ? '// acft target' : '// long run';
-  document.getElementById('block-display').textContent = b.num;
-  document.getElementById('pct-display').textContent = currentProgram === 'bct' ? b.pct + '%' : 'WK' + b.num;
-  document.getElementById('progress-val').innerHTML = 'BLOCK ' + b.num + ' <span>/ 12</span>';
-  document.getElementById('progress-bar').style.width = ((currentBlock + 1) / 12 * 100) + '%';
-  if (currentProgram === 'bct') {
-    document.getElementById('intensity-val').innerHTML = b.pct + ' <span>%</span>';
-    document.getElementById('intensity-bar').style.width = b.pct + '%';
-    document.getElementById('prog-card-3-val').innerHTML = '2MI <span>RUN</span>';
-  } else {
-    const bonus = Math.floor(currentBlock / 2) * 5;
-    document.getElementById('intensity-val').innerHTML = '+' + bonus + ' <span>LBS</span>';
-    document.getElementById('intensity-bar').style.width = (currentBlock / 7 * 100) + '%';
-    document.getElementById('prog-card-3-val').innerHTML = longRunMiles(b.num) + ' <span>MI</span>';
-  }
+  document.getElementById('block-word').textContent = 'WEEK';
+  if (currentProgram === 'ranger') updateRgrCards(); else updateOpCards();
 }
 
 const PROGRAM_SUBS = {
   ranger: '// SHIP PREP — AFT 465+ — 15 WEEKS — OCT 12 → JAN 24 · BCT JAN 25',
-  hybrid: '// HYBRID WARRIOR PROGRAM — 12-WEEK CYCLE',
-  bct: '// BODYBUILDING + PROGRAM — 12-WEEK CYCLE',
+  hybrid: '// HYBRID WARRIOR — STRENGTH + ENGINE, NO WEAK SIDE — 12 WEEKS (AFTER BCT)',
+  op: '// OPERATOR — STRENGTH · POWER · TACTICAL CONDITIONING — 12 WEEKS (AFTER BCT)',
+  fm: '// FUNCTIONAL MUSCLE — SIZE THAT WORKS — 12 WEEKS (AFTER BCT)',
 };
 function syncProgTabs() {
   document.querySelectorAll('.prog-tab').forEach(t => t.classList.toggle('active', t.dataset.prog === currentProgram));
@@ -1980,14 +2115,11 @@ function setBlock(i) {
   savePosition();
 }
 
-const BCT_DAYS = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
-const HYB_DAYS = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
+const WEEK_DAYS = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
 
 function renderDayTabs() {
-  const days = currentProgram === 'bct' ? BCT_DAYS : HYB_DAYS;
-  const data = currentProgram === 'bct' ? getBCTData(BLOCKS[currentBlock])
-    : currentProgram === 'ranger' ? getRgrData(currentBlock + 1)
-    : getHybridData(BLOCKS[currentBlock]);
+  const days = WEEK_DAYS;
+  const data = currentProgram === 'ranger' ? getRgrData(currentBlock + 1) : progData(currentBlock + 1);
   const wrap = document.getElementById('day-tabs');
   wrap.innerHTML = days.map(d => {
     const day = data[d];
@@ -2016,27 +2148,6 @@ function toggleCheck(key) {
   try { localStorage.setItem('zachCheckedState', JSON.stringify(checkedState)); } catch(e) {}
 }
 
-// Rest guidance for the Hybrid program's lift names. Anything not listed here
-// (e.g. the legacy BCT program's exercise names) falls back to the DEFAULT below
-// rather than guessing — keeps this honest instead of silently wrong.
-const REST_LOOKUP = {
-  'BARBELL SQUATS (PYRAMID)': '2–3 MIN ON TOP SETS',
-  'FLAT BENCH PRESS (PYRAMID)': '2–3 MIN ON TOP SETS',
-  'STANDING MILITARY PRESS (PYRAMID)': '2–3 MIN ON TOP SETS',
-  'CONVENTIONAL DEADLIFTS': '2–3 MIN — HEAVY HINGE',
-  'INCLINE BARBELL PRESS': '90 SEC – 2 MIN',
-  'BENT OVER BARBELL ROWS': '90 SEC – 2 MIN',
-  'SINGLE-LEG LEG PRESS': '90 SEC – 2 MIN',
-  'WIDE GRIP PULL-UPS': '90 SEC BETWEEN SETS',
-  'WIDE GRIP PULL-UPS (2ND SESSION)': '90 SEC BETWEEN SETS',
-  'AB WHEEL / ROLLOUTS': '45–60 SEC',
-  'HANGING LEG RAISES': '45–60 SEC',
-  'SEATED STIFF LEG RAISES': '45–60 SEC',
-  'CABLE OBLIQUE CRUNCHES': '45–60 SEC',
-  'PLANK — ACFT TARGET': '45–60 SEC',
-};
-const REST_DEFAULT = '60–90 SEC';
-
 function restFor(l) {
   if (l.rest) return l.rest;
   if (l.ss) {
@@ -2044,7 +2155,7 @@ function restFor(l) {
       ? 'NO REST → STRAIGHT INTO PAIRED MOVE'
       : 'REST 90 SEC AFTER THE PAIR, REPEAT';
   }
-  return REST_LOOKUP[l.name] || REST_DEFAULT;
+  return '60–90 SEC';
 }
 
 function renderLiftTable(lifts, prefix, tagFn) {
@@ -2080,34 +2191,12 @@ function renderLiftTable(lifts, prefix, tagFn) {
   return h;
 }
 
-function renderKBCircuit(week, prefix) {
-  const items = getKBCircuit(week);
-  let h = '<div class="section"><div class="section-label">// kb home circuit — ' + items.circuitName + ' (standalone, ~3x/week)</div>';
-  h += '<div class="kb-prime-box"><div class="kb-prime-title">⚡ ' + items.circuitName + ' — no bell yet? use the bodyweight sub</div>';
-  h += '<div class="lt-sets">';
-  items.forEach(function(k, i) {
-    const key = prefix + '-kb-' + i;
-    h += '<div class="lt-set"><div class="lt-set-label">' + k.ex + '</div>'
-      + '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;">'
-      + '<div class="lt-set-detail" style="color:var(--yellow-dim);">KB: ' + k.kb + '</div>'
-      + '<div class="lt-set-detail">SUB: ' + k.sub + '</div>'
-      + '<div class="done-check ' + (checkedState[key] ? 'checked' : '') + '" id="check-' + key + '" onclick="toggleCheck(\'' + key + '\')">' + (checkedState[key] ? '✓' : '') + '</div>'
-      + '</div></div>';
-  });
-  h += '</div></div></div>';
-  return h;
-}
 
 function renderGymWarmup() {
   return '<div class="section"><div class="section-label">// gym warm-up — your choice</div>'
     + '<div class="info-box">5-10 MIN: LIGHT CARDIO / STRETCHING / BAND WORK / COMPRESSION. AT MINIMUM, STRETCH BEFORE YOU LIFT.</div></div>';
 }
 
-function renderCooldown(items) {
-  return '<div class="section"><div class="section-label">// cool down</div><div class="cooldown-items">'
-    + items.map(c => '<div class="cooldown-item">' + c + '</div>').join('')
-    + '</div></div>';
-}
 
 function renderNotes(key) {
   let h = '<div class="section"><div class="section-label">// notes</div>'
@@ -2124,229 +2213,12 @@ function attachNotes(key) {
   });
 }
 
-// ============================================================
-// RENDER BCT WORKOUT
-// ============================================================
-function renderBCTWorkout() {
-  const data = getBCTData(BLOCKS[currentBlock]);
-  const day = data[currentDay];
-  const content = document.getElementById('workout-content');
-  const prefix = 'bct-' + currentBlock + '-' + currentDay;
-
-  if (day.rest) {
-    content.innerHTML = '<div style="text-align:center;padding:60px;color:var(--text-dim);"><div style="font-family:Bebas Neue,sans-serif;font-size:3rem;letter-spacing:6px;color:var(--border);">REST DAY</div><div style="font-family:Share Tech Mono,monospace;font-size:0.7rem;letter-spacing:3px;margin-top:12px;">RECOVER. HYDRATE. SLEEP.</div></div>';
-    return;
-  }
-
-  let html = '';
-  html += '<div class="section"><div class="section-label">// warm up</div><div class="info-box">' + day.warmup.toUpperCase() + '</div></div>';
-
-  if (day.run) {
-    html += '<div class="section"><div class="section-label">// cardio — acft 2-mile prep</div>'
-      + '<div class="run-card"><div class="run-card-title">' + day.run.title + '</div>'
-      + '<div class="run-intervals">'
-      + '<div class="run-interval"><div class="run-interval-num">01</div><div class="run-interval-desc">' + day.run.desc + '</div><div class="run-interval-detail">' + day.run.detail + '</div></div>'
-      + '<div class="run-interval" style="border-left:2px solid var(--yellow);padding-left:10px;"><div class="run-interval-num" style="color:var(--olive-light)">📋</div><div class="run-interval-desc" style="color:var(--text-dim);font-style:italic;">' + day.run.note + '</div></div>'
-      + '</div></div></div>';
-
-    html += '<div class="section"><div class="section-label">// acft — leg tuck progression</div>'
-      + '<div class="lt-tracker"><div class="lt-tracker-title">BLOCK ' + BLOCKS[currentBlock].num + ' LEG TUCK WORK</div>'
-      + '<div class="lt-sets">'
-      + day.lt.map(function(s, i) {
-          const key = 'lt-' + currentBlock + '-' + i;
-          return '<div class="lt-set"><div class="lt-set-label">' + (i+1) + '. ' + s.label + '</div>'
-            + '<div style="display:flex;gap:16px;align-items:center;">'
-            + '<div class="lt-set-detail">' + s.sets + ' sets × ' + s.detail + '</div>'
-            + '<div class="done-check ' + (checkedState[key] ? 'checked' : '') + '" id="check-' + key + '" onclick="toggleCheck(\'' + key + '\')">' + (checkedState[key] ? '✓' : '') + '</div>'
-            + '</div></div>';
-        }).join('')
-      + '</div></div></div>';
-  }
-
-  if (day.lifts) {
-    html += '<div class="section"><div class="section-label">// workout</div>' + renderLiftTable(day.lifts, prefix, null) + '</div>';
-  }
-
-  html += renderCooldown(day.cooldown);
-  html += renderNotes(prefix);
-
-  content.innerHTML = html;
-  attachNotes(prefix);
-}
-
-// ============================================================
-// RENDER HYBRID WORKOUT
-// ============================================================
-function renderCoreBlock(coreItems, prefix, label) {
-  let h = '<div class="section"><div class="section-label">// ' + label + '</div>';
-  h += '<div class="lt-tracker"><div class="lt-tracker-title">' + label.toUpperCase() + '</div><div class="lt-sets">';
-  coreItems.forEach(function(c, i) {
-    const key = prefix + '-core-' + i;
-    h += '<div class="lt-set"><div class="lt-set-label">' + (i+1) + '. ' + c.name + '</div>'
-      + '<div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;">'
-      + '<div class="lt-set-detail">' + c.detail + '</div>'
-      + '<input class="actual-input" placeholder="—" value="' + (actualLog[key] || '') + '" oninput="saveActual(\'' + key + '\', this)">'
-      + '<div class="done-check ' + (checkedState[key] ? 'checked' : '') + '" id="check-' + key + '" onclick="toggleCheck(\'' + key + '\')">' + (checkedState[key] ? '✓' : '') + '</div>'
-      + '</div></div>';
-  });
-  h += '</div></div></div>';
-  return h;
-}
-
-function renderHybridWorkout() {
-  const data = getHybridData(BLOCKS[currentBlock]);
-  const day = data[currentDay];
-  const content = document.getElementById('workout-content');
-  const prefix = 'hyb-' + currentBlock + '-' + currentDay;
-  const wk = BLOCKS[currentBlock].num;
-
-  // SUNDAY RECOVERY
-  if (day.recovery) {
-    let html = '<div class="section"><div class="section-label">// recovery protocol</div>';
-    html += '<div class="info-box">ACTIVE RECOVERY DAY — NO LIFTING.</div></div>';
-    html += '<div class="section"><div class="section-label">// recommended activities</div>';
-    html += '<div class="cooldown-items">' + day.recovery.map(r => '<div class="cooldown-item">' + r + '</div>').join('') + '</div></div>';
-    html += renderCoreBlock(day.core, prefix, 'core circuit + acft plank — target: ' + PLANK_TARGETS[wk - 1]);
-    html += renderNotes(prefix);
-    content.innerHTML = html;
-    attachNotes(prefix);
-    return;
-  }
-
-  // SATURDAY LONG RUN
-  if (day.longRun) {
-    let html = '<div class="section"><div class="section-label">// saturday — pick ONE: long run or ruck</div>';
-    // OPTION A — LONG RUN
-    html += '<div class="run-card"><div class="run-card-title">OPTION A — LONG RUN (WK ' + wk + ')</div>'
-      + '<div class="run-intervals">'
-      + '<div class="run-interval"><div class="run-interval-num" style="font-size:1.8rem;color:var(--yellow);">' + day.longRun.miles + '</div><div class="run-interval-desc">MILES — EASY AEROBIC PACE</div><div class="run-interval-detail">HR &lt; 155 BPM</div></div>'
-      + '<div class="run-interval" style="border-left:2px solid var(--yellow);padding-left:10px;"><div class="run-interval-num" style="color:var(--olive-light)">📋</div><div class="run-interval-desc" style="color:var(--text-dim);font-style:italic;">' + day.longRun.note + '</div></div>'
-      + '</div></div>';
-    // OPTION B — RUCK
-    if (day.ruck) {
-      html += '<div class="run-card" style="border-left-color:var(--olive-light);margin-top:12px;">'
-        + '<div class="run-card-title" style="color:var(--olive-light);">OPTION B — RUCK (WK ' + wk + ')</div>'
-        + '<div class="run-intervals">'
-        + '<div class="run-interval"><div class="run-interval-num" style="font-size:1.4rem;color:var(--olive-light);">' + day.ruck.wt + '</div><div class="run-interval-desc">RUCK WEIGHT — loaded backpack is fine</div></div>'
-        + '<div class="run-interval"><div class="run-interval-num" style="font-size:1.4rem;color:var(--olive-light);">' + day.ruck.dist + '</div><div class="run-interval-desc">DISTANCE</div><div class="run-interval-detail">' + day.ruck.pace + '</div></div>'
-        + '<div class="run-interval" style="border-left:2px solid var(--olive-light);padding-left:10px;"><div class="run-interval-num" style="color:var(--olive-light)">📋</div><div class="run-interval-desc" style="color:var(--text-dim);font-style:italic;">Walk the whole thing — do NOT run with the weight. Boots or sturdy shoes. Pack the load HIGH and tight against your back, not sagging low. If your feet or lower back start screaming, cut it short — rucking injuries are cumulative.</div></div>'
-        + '</div></div>';
-    }
-    html += '</div>';
-    html += '<div class="section"><div class="section-label">// 12-week long run progression</div><div class="mileage-grid">';
-    for (let i = 1; i <= 12; i++) {
-      const isCurrent = i === wk;
-      html += '<div class="mile-card ' + (isCurrent ? 'current' : '') + '">'
-        + '<div class="mile-card-week">WK ' + i + '</div>'
-        + '<div class="mile-card-dist">' + longRunMiles(i) + '<span>mi</span></div>'
-        + '</div>';
-    }
-    html += '</div></div>';
-    // Ruck progression grid
-    html += '<div class="section"><div class="section-label">// 12-week ruck progression</div><div class="mileage-grid">';
-    for (let i = 1; i <= 12; i++) {
-      const isCurrent = i === wk;
-      const r = getRuck(i);
-      html += '<div class="mile-card ' + (isCurrent ? 'current' : '') + '">'
-        + '<div class="mile-card-week">WK ' + i + '</div>'
-        + '<div class="mile-card-dist" style="font-size:0.85rem;">' + r.wt.replace(' lbs','') + '<span>lb</span></div>'
-        + '<div class="mile-card-week" style="margin-top:2px;">' + r.dist.replace(' miles','mi').replace(' mile','mi') + '</div>'
-        + '</div>';
-    }
-    html += '</div></div>';
-    html += renderCooldown(day.cooldown);
-    html += renderNotes(prefix);
-    content.innerHTML = html;
-    attachNotes(prefix);
-    return;
-  }
-
-  // STANDARD DAY — split into GYM (lift) and HOME (cardio) blocks
-  let html = '';
-
-  // Build the cardio content (run/speed/ladder) for the HOME block
-  let cardioHtml = '';
-  if (typeof day.amRun === 'string') {
-    cardioHtml += '<div class="section"><div class="section-label">// easy cardio</div><div class="info-box">🏃 ' + day.amRun.toUpperCase() + '</div></div>';
-  } else if (day.amRun && day.amRun.title) {
-    cardioHtml += '<div class="section"><div class="section-label">// ' + day.amRun.title.toLowerCase() + '</div>'
-      + '<div class="run-card"><div class="run-card-title">' + day.amRun.title + '</div><div class="run-intervals">'
-      + day.amRun.steps.map(function(s, i) {
-          return '<div class="run-interval"><div class="run-interval-num">0' + (i+1) + '</div><div class="run-interval-desc">' + s + '</div></div>';
-        }).join('')
-      + '</div></div></div>';
-  }
-  // Thursday treadmill ladder is cardio (comes after the AMRAP/lift)
-  if (day.speedWork) {
-    cardioHtml += '<div class="section"><div class="section-label">// ' + day.speedWork.title.toLowerCase() + '</div>'
-      + '<div class="run-card"><div class="run-card-title">' + day.speedWork.title + '</div><div class="run-intervals">'
-      + day.speedWork.steps.map(function(s, i) {
-          return '<div class="run-interval"><div class="run-interval-num">0' + (i+1) + '</div><div class="run-interval-desc">' + s + '</div></div>';
-        }).join('')
-      + '</div></div></div>';
-  }
-
-  // ── GYM — LIFT block ──
-  let gymHtml = '';
-  if (day.kneeNote) {
-    gymHtml += '<div class="section"><div class="kb-prime-box" style="border-left-color:var(--red);background:rgba(192,57,43,0.08);">'
-      + '<div class="kb-prime-title" style="color:var(--red);">⚠ KNEE — READ FIRST</div>'
-      + '<div style="font-size:0.8rem;color:var(--text);letter-spacing:0.5px;line-height:1.5;">' + day.kneeNote + '</div>'
-      + '</div></div>';
-  }
-  // Gym warm-up placeholder (you handle your own — stretch at minimum)
-  gymHtml += renderGymWarmup();
-  if (day.hyrox) {
-    gymHtml += '<div class="section"><div class="section-label">// hyrox matrix — 25-minute amrap (this IS your lift)</div>'
-      + '<div class="hyrox-card"><div class="hyrox-title">' + day.hyrox.title + '</div>'
-      + '<div class="hyrox-sub">' + day.hyrox.format + '</div>'
-      + '<div class="lt-sets">'
-      + day.hyrox.moves.map(function(m, i) {
-          const key = prefix + '-hyrox-' + i;
-          return '<div class="lt-set"><div class="lt-set-label">' + m.label + '</div>'
-            + '<div style="display:flex;gap:16px;align-items:center;">'
-            + '<div class="lt-set-detail">' + m.detail + '</div>'
-            + '<input class="actual-input" placeholder="—" value="' + (actualLog[key] || '') + '" oninput="saveActual(\'' + key + '\', this)">'
-            + '<div class="done-check ' + (checkedState[key] ? 'checked' : '') + '" id="check-' + key + '" onclick="toggleCheck(\'' + key + '\')">' + (checkedState[key] ? '✓' : '') + '</div>'
-            + '</div></div>';
-        }).join('')
-      + '</div>'
-      + '<div style="margin-top:10px;font-family:Share Tech Mono,monospace;font-size:0.7rem;color:var(--text-dim);letter-spacing:1px;">📋 ' + day.hyrox.note + '</div>'
-      + '</div></div>';
-  }
-  if (day.lifts) {
-    gymHtml += '<div class="section"><div class="section-label">// lift</div>' + renderLiftTable(day.lifts, prefix, null) + '</div>';
-  }
-  // Core end-cap stays with the lift day
-  if (day.core) {
-    gymHtml += renderCoreBlock(day.core, prefix, 'core end-cap: ' + (day.core.blockName || '') + ' — plank: ' + PLANK_TARGETS[wk - 1]);
-  }
-
-  // KB home circuit goes in the HOME block (standalone conditioning)
-  cardioHtml += renderKBCircuit(wk, prefix);
-
-  // Assemble the two blocks
-  html += '<div class="day-block gym"><div class="day-block-header">🏋 GYM — LIFT<span class="sub">lift · core · hyrox</span></div><div class="day-block-body">' + gymHtml + '</div></div>';
-  html += '<div class="day-block home"><div class="day-block-header">🏃 HOME — CARDIO + KB<span class="sub">runs · KB · your schedule</span></div><div class="day-block-body">' + cardioHtml + '</div></div>';
-
-  html += renderCooldown(day.cooldown);
-  html += renderNotes(prefix);
-
-  content.innerHTML = html;
-  attachNotes(prefix);
-}
-
-// ============================================================
-// MAIN RENDER
-// ============================================================
 function renderWorkout() {
   renderDayTabs();
-  if (currentProgram === 'bct') {
-    renderBCTWorkout();
-  } else if (currentProgram === 'ranger') {
+  if (currentProgram === 'ranger') {
     renderRgrWorkout();
   } else {
-    renderHybridWorkout();
+    renderOpWorkout();   // Operator, Functional Muscle and Hybrid Warrior share one renderer
   }
 }
 
