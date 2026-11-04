@@ -703,6 +703,7 @@
       <div class="program-switcher">
         <button class="prog-tab" data-prog="ranger" onclick="setProgram('ranger')">SHIP PREP</button>
         <button class="prog-tab" data-prog="hybrid" onclick="setProgram('hybrid')">HYBRID WARRIOR</button>
+        <button class="prog-tab" data-prog="op" onclick="setProgram('op')">OPERATOR</button>
         <button class="prog-tab" data-prog="bct" onclick="setProgram('bct')">MUSCLE +</button>
       </div>
       <div class="block-nav" id="block-nav"></div>
@@ -842,11 +843,15 @@ try { savedPosition = JSON.parse(localStorage.getItem('zach-position') || '{}');
 let currentProgram = savedPosition.program || 'ranger';
 // One time only: open on Ship Prep (the plan you're running now). After that, the last tab you pick sticks.
 try { if (!localStorage.getItem('rgr-default')) { currentProgram = 'ranger'; localStorage.setItem('rgr-default', '1'); } } catch(e) {}
-if (['ranger', 'hybrid', 'bct'].indexOf(currentProgram) < 0) currentProgram = 'ranger';
+if (['ranger', 'hybrid', 'bct', 'op'].indexOf(currentProgram) < 0) currentProgram = 'ranger';
 // Week 1 Monday of each 12-week cycle. New cycle → add a new start date.
 const CYCLE_START = new Date(2026, 7, 3); // Cycle 1 + Bodybuilding: Mon Aug 3, 2026
 const RANGER_START = new Date(2026, 9, 12);  // Ship Prep: Mon Oct 12, 2026 → Jan 24, 2027 (15 weeks; id stays 'ranger' so logs keep)
-function cycleStart() { return currentProgram === 'ranger' ? RANGER_START : CYCLE_START; }
+// Operator's settings (maxes + start date) load here, before todayPosition() first runs. See OPERATOR below.
+let opCfg = {};
+try { opCfg = JSON.parse(localStorage.getItem('zach-op') || '{}') || {}; } catch(e) { opCfg = {}; }
+function opStartDate() { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(opCfg.start || ''); return m ? new Date(+m[1], +m[2] - 1, +m[3]) : null; }
+function cycleStart() { return currentProgram === 'ranger' ? RANGER_START : currentProgram === 'op' ? opStartDate() : CYCLE_START; }
 function programWeeks() { return currentProgram === 'ranger' ? 15 : 12; }
 const WEEKDAYS = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
 function todayKey() { const n = new Date(); return n.getFullYear() + '-' + n.getMonth() + '-' + n.getDate(); }
@@ -854,7 +859,9 @@ function todayKey() { const n = new Date(); return n.getFullYear() + '-' + n.get
 function todayPosition() {
   const n = new Date();
   const today = new Date(n.getFullYear(), n.getMonth(), n.getDate());
-  const days = Math.round((today - cycleStart()) / 86400000);
+  const start = cycleStart();
+  if (!start) return { block: 0, day: WEEKDAYS[n.getDay()] };   // Operator with no start date yet
+  const days = Math.round((today - start) / 86400000);
   return { block: Math.min(programWeeks() - 1, Math.max(0, Math.floor(days / 7))), day: WEEKDAYS[n.getDay()] };
 }
 let currentBlock = todayPosition().block;
@@ -2103,6 +2110,201 @@ function renderRgrWorkout() {
 }
 
 // ============================================================
+// OPERATOR — 12 WEEKS (added Nov 4, 2026; meant for after BCT)
+// ============================================================
+// Heavy strength, power and tactical conditioning. Every load comes from OPERATOR MAXES (`zach-op`), so after BCT
+// Zach types his new maxes and the whole plan recalculates. The start date lives there too; until it's set, the plan
+// opens on Week 1 and doesn't track today's week.
+// Main lifts work off a training max (90% of the 1RM) in three 4-week waves: fives, triples, then doubles and singles.
+// Weeks 4 and 8 deload; week 12 tests new maxes. The week: Mon lower · Tue upper · Wed engine (VO2 work) ·
+// Thu hinge + carry · Fri press + tactical circuit · Sat ruck or long run · Sun off.
+// Run paces come from the 2-mile in Ship Prep's YOUR NUMBERS (`rgr-numbers`), so there's one place to log it.
+const OP_WAVES = [   // [reps, sets, % of training max]
+  [5, 3, 70], [5, 4, 75], [5, 5, 80], [5, 3, 60],
+  [3, 4, 80], [3, 5, 85], [3, 4, 90], [3, 3, 60],
+  [2, 5, 88], [2, 4, 92], [1, 3, 95], [0, 0, 0],
+];
+const OP_WEEKS = [
+  { type: 'BUILD',  tag: 'WAVE 1 — FIVES',    note: 'Leave 2 reps in the tank on every set. The weight climbs every week; your form doesn\'t change.' },
+  { type: 'BUILD',  tag: 'WAVE 1 — FIVES',    note: 'Same lifts, one more set.' },
+  { type: 'BUILD',  tag: 'WAVE 1 — PEAK',     note: 'Heaviest fives. The last set is hard but clean.' },
+  { type: 'DELOAD', tag: 'DELOAD',            note: 'Lighter and shorter, same movements. Sleep and eat — this is where the last three weeks turn into strength.' },
+  { type: 'BUILD',  tag: 'WAVE 2 — TRIPLES',  note: 'Heavier bar, fewer reps. Take the full rest.' },
+  { type: 'BUILD',  tag: 'WAVE 2 — TRIPLES',  note: 'One more set.' },
+  { type: 'BUILD',  tag: 'WAVE 2 — PEAK',     note: 'Watch bar speed: if a rep grinds, that\'s your last set.' },
+  { type: 'DELOAD', tag: 'DELOAD',            note: 'Back off before the heavy wave.' },
+  { type: 'BUILD',  tag: 'WAVE 3 — DOUBLES',  note: 'Low reps, full rest. Every jump and throw is max effort — power is speed, not fatigue.' },
+  { type: 'BUILD',  tag: 'WAVE 3 — DOUBLES',  note: 'Heavy doubles. Circuits stay hard; lifts stay crisp.' },
+  { type: 'BUILD',  tag: 'WAVE 3 — SINGLES',  note: 'Singles at 95% of the training max — heavy, not a max. Then rest up for the test.' },
+  { type: 'TEST',   tag: 'TEST WEEK',         note: 'New 1RMs: squat Mon, bench Tue, deadlift Thu, press Fri. Log them in OPERATOR MAXES and the next cycle starts from them.' },
+];
+const OP_FIELDS = [
+  { k: 'squat',    label: 'BACK SQUAT 1RM',     ph: '450' },
+  { k: 'bench',    label: 'BENCH PRESS 1RM',    ph: '315' },
+  { k: 'deadlift', label: 'TRAP BAR DEADLIFT 1RM', ph: '445' },
+  { k: 'press',    label: 'STANDING PRESS 1RM', ph: '190' },
+  { k: 'clean',    label: 'HANG POWER CLEAN 1RM', ph: '275' },
+];
+const OP_DEFAULT = { squat: ORM.squat, bench: ORM.bench, deadlift: ORM.deadlift, press: ORM.ohp, clean: ORM.hangclean };
+function opMax(k) { const n = parseInt(opCfg[k], 10); return n > 0 ? n : OP_DEFAULT[k]; }
+function opLoad(k, pct) { return String(Math.round(opMax(k) * 0.9 * pct / 100 / 5) * 5); }
+function saveOpCfg(k, el) {
+  opCfg[k] = el.value.trim();
+  try { localStorage.setItem('zach-op', JSON.stringify(opCfg)); } catch(e) {}
+  if (k === 'start') { const p = todayPosition(); currentBlock = p.block; renderBlockNav(); }
+  updateProgressCards();
+  renderWorkout();
+  savePosition();
+}
+
+function opMain(name, k, w, cue) {
+  const v = OP_WAVES[w - 1];
+  if (w === 12) return { name: name + ' — TEST', note: 'Ramp: 50%×5, 70%×3, 80%×2, 90%×1, then singles in 5–10 lb jumps. Stop when one slows down a lot. Log the best in OPERATOR MAXES.', sets: '1', reps: '1RM', lbs: 'WORK UP', rest: '3-5 MIN' };
+  return { name: name, note: 'Warm-up: bar ×10, 50%×5, 65%×3, then work sets. ' + cue, sets: String(v[1]), reps: String(v[0]), lbs: opLoad(k, v[2]), rest: v[0] <= 3 ? '3 MIN' : '2-3 MIN' };
+}
+function opPower(w) { const d = OP_WEEKS[w - 1].type === 'DELOAD'; return d ? ['2', '3'] : w <= 4 ? ['3', '5'] : w <= 8 ? ['4', '3'] : w === 12 ? ['3', '2'] : ['5', '2']; }
+function opAcc(w) { const d = OP_WEEKS[w - 1].type === 'DELOAD'; return d ? ['2', '8'] : w <= 4 ? ['3', '10'] : w <= 8 ? ['3', '8'] : ['3', '6']; }
+function opRounds(w) { const t = OP_WEEKS[w - 1].type; return t === 'DELOAD' ? 2 : t === 'TEST' ? 0 : w <= 3 ? 3 : w <= 7 ? 4 : 5; }
+
+// Wednesday engine: VO2 work (paces from the 2-mile), easy in deloads, a 2-mile in test week
+const OP_ENGINE = [
+  { reps: 6,  m: 400,  label: '400m',  rest: '90 sec jog' },
+  { time: '5 x 3 MIN HARD / 2 MIN EASY' },
+  { time: '4 x 4 MIN HARD / 3 MIN EASY', note: 'The VO2 max classic. Hard = you can say two words, not a sentence.' },
+  { easy: 30 },
+  { reps: 8,  m: 400,  label: '400m',  rest: '75 sec jog' },
+  { reps: 5,  m: 1000, label: '1000m', rest: '2:30 jog' },
+  { time: '5 x 4 MIN HARD / 3 MIN EASY' },
+  { easy: 30 },
+  { reps: 10, m: 200,  label: '200m',  rest: '200m jog', fast: 4, note: 'Faster than 2-mile pace. Sharp, relaxed shoulders.' },
+  { reps: 3,  m: 1609, label: '1 mile', rest: '3 min jog' },
+  { reps: 6,  m: 400,  label: '400m',  rest: '2 min jog', fast: 2 },
+  { test: true },
+];
+// Friday tactical circuits, in turn
+const OP_CIRCUITS = [
+  { name: 'SANDBAG SPRINTS', rest: '90 SEC', rows: [['100M SPRINT', 'all out'], ['SANDBAG CLEAN TO SHOULDER', '10 · 60–80 lb, alternate shoulders (no bag: DB clean)'], ['BURPEES', '10']] },
+  { name: 'CARRY MEDLEY', rest: '2 MIN', rows: [['FARMER CARRY', '50m · heavy, 2x70+'], ['SANDBAG BEAR HUG CARRY', '50m'], ['SLED DRAG, BACKWARD', '50m'], ['KB OVERHEAD CARRY', '25m ea arm']] },
+  { name: 'RUN-LIFT CHIPPER', rest: 'NONE — FOR TIME', rows: [['400M RUN', 'hard'], ['KB SWINGS', '30'], ['PUSH-UPS', '20'], ['PULL-UPS', '10']] },
+];
+// Saturday: ruck (15:00/mi or faster) or long easy run. Never add weight AND distance in the same week.
+const OP_SAT = [
+  { ruck: 35, mi: 4 }, { mi: 5 }, { ruck: 35, mi: 6 }, { mi: 4 },
+  { ruck: 45, mi: 6 }, { mi: 6 }, { ruck: 45, mi: 8 }, { ruck: 35, mi: 4 },
+  { ruck: 50, mi: 6 }, { mi: 7 }, { ruck: 50, mi: 8 }, { mi: 5 },
+];
+
+function getOpData(w) {
+  const wk = OP_WEEKS[w - 1], deload = wk.type === 'DELOAD', test = wk.type === 'TEST';
+  const pw = opPower(w), acc = opAcc(w), r = opRounds(w);
+  const pu = rgrPct('chins', 0.5, '5');
+  const d = {};
+  d.monday = { day: 'MONDAY', focus: test ? 'TEST — SQUAT' : 'LOWER — STRENGTH', time: '~60 MIN',
+    lifts: [
+      { name: 'BOX JUMP', note: 'Before the squat, fresh. Highest box you land quietly; step down.', sets: pw[0], reps: pw[1], lbs: 'BW', rest: '60-90 SEC' },
+      opMain('BACK SQUAT', 'squat', w, 'Below parallel, brace before every rep.'),
+      { name: 'ROMANIAN DEADLIFT', note: 'Hamstrings, not lower back. Bar slides down the thighs.', sets: test ? '2' : acc[0], reps: acc[1], lbs: 'RPE 7' },
+      { name: 'DB WALKING LUNGE', note: '', sets: test ? '2' : acc[0], reps: acc[1] + ' ea', lbs: 'DBs' },
+    ],
+    core: [{ name: 'AB WHEEL', detail: '3 x 10' }, { name: 'SIDE PLANK', detail: '2 x 45 sec ea' }] };
+  d.tuesday = { day: 'TUESDAY', focus: test ? 'TEST — BENCH' : 'UPPER — STRENGTH', time: '~60 MIN',
+    lifts: [
+      { name: 'MED BALL CHEST PASS', note: 'Into a wall, as hard as you can. No ball: plyo push-ups.', sets: pw[0], reps: pw[1], lbs: '10-20', rest: '60 SEC' },
+      opMain('BENCH PRESS', 'bench', w, 'Shoulder blades pinned, feet driving.'),
+      { name: 'WEIGHTED PULL-UPS', note: 'Dead hang. Add 5 lb when every rep is clean.', sets: acc[0], reps: w <= 4 ? '5' : '3', lbs: 'BW+' },
+      { name: 'ONE-ARM DB ROW', note: '', sets: acc[0], reps: acc[1] + ' ea', lbs: 'RPE 7' },
+      { name: 'DIPS', ss: 'O', ssPos: 'first', note: '', sets: acc[0], reps: acc[1], lbs: 'BW' },
+      { name: 'FACE PULLS', ss: 'O', ssPos: 'last', note: 'Shoulder health for the pressing and the ruck.', sets: acc[0], reps: '15', lbs: 'Light' },
+    ] };
+  const e = OP_ENGINE[w - 1];
+  let run;
+  if (e.test) run = { title: '2-MILE TIME TRIAL', steps: ['10 min easy + drills + 3 x 20 sec strides', '2 MILES all-out but even. Log it in Ship Prep\'s YOUR NUMBERS — every pace comes from it.', '10 min walk/jog cool-down'] };
+  else if (e.easy) run = { title: 'EASY RUN — ' + e.easy + ' MIN', steps: [e.easy + ' min easy. ' + rgrEasy(), 'Deload — no intervals this week.'] };
+  else if (e.time) run = { title: e.time, steps: ['10 min easy + drills + 3 x 20 sec strides', e.time.toLowerCase() + ' — hard = about 5K race effort', e.note || 'Even efforts: the last rep looks like the first.', '10 min easy cool-down'] };
+  else run = { title: 'INTERVALS — ' + e.reps + ' x ' + e.label, steps: ['10 min easy + drills + 3 x 20 sec strides', e.reps + ' x ' + e.label + ' ' + rgrRepPace(e.m, e.fast) + ' — rest ' + e.rest].concat(e.note ? [e.note] : []).concat(['10 min easy cool-down']) };
+  d.wednesday = { day: 'WEDNESDAY', focus: 'ENGINE', time: '~45 MIN', run: run,
+    core: [{ name: 'PLANK', detail: '3 x 1:00' }, { name: 'HANGING KNEE RAISES', detail: '3 x 12' }] };
+  d.thursday = { day: 'THURSDAY', focus: test ? 'TEST — DEADLIFT' : 'HINGE + CARRY', time: '~60 MIN',
+    lifts: [
+      { name: 'HANG POWER CLEAN', note: 'Explosive hips, fast elbows. Speed first — if it slows, stay at that weight.', sets: pw[0], reps: pw[1], lbs: String(Math.round(opMax('clean') * (deload ? 0.55 : w <= 4 ? 0.65 : w <= 8 ? 0.7 : 0.75) / 5) * 5), rest: '90 SEC' },
+      opMain('TRAP BAR DEADLIFT', 'deadlift', w, 'Push the floor away; lock out with the glutes.'),
+      { name: 'FRONT SQUAT', note: 'Upright torso. Second squat of the week, lighter.', sets: test ? '2' : acc[0], reps: acc[1] === '10' ? '6' : '5', lbs: 'RPE 7' },
+      { name: 'FARMER CARRY', note: 'Heavy. Grip, traps and everything that carries a ruck.', sets: '4', reps: '50m', lbs: '2x70+', rest: '90 SEC' },
+      { name: 'SLED PUSH', note: '', sets: '4', reps: '25m', lbs: 'HEAVY', rest: '90 SEC' },
+    ] };
+  const c = OP_CIRCUITS[(w - 1) % 3];
+  d.friday = { day: 'FRIDAY', focus: test ? 'TEST — PRESS' : 'PRESS + TACTICAL', time: test ? '~40 MIN' : '~60 MIN',
+    lifts: [
+      opMain('STANDING PRESS', 'press', w, 'Strict: glutes tight, no leg drive.'),
+      { name: 'WEIGHTED CHIN-UPS', note: '', sets: acc[0], reps: pu, lbs: 'BW+' },
+    ],
+    circuits: r ? [{ label: 'tactical circuit — ' + c.name.toLowerCase(), title: r + ' ROUNDS · REST ' + c.rest, items: rmxItems(c.rows),
+      note: c.rest.indexOf('TIME') >= 0 ? 'Log the total time. Next time, beat it.' : 'Rest only after the round. Log your times.' }] : [],
+    pm: test ? 'Test day — no circuit. Press, chin-ups, done.' : null };
+  const s = OP_SAT[w - 1];
+  d.saturday = s.ruck
+    ? { day: 'SATURDAY', focus: 'RUCK', time: '~' + Math.round(s.mi * 15 + 10) + ' MIN',
+        run: { title: 'RUCK — ' + s.ruck + ' LB · ' + s.mi + ' MI', steps: [s.ruck + ' lb · ' + s.mi + ' miles · 15:00/mi or faster (' + fmtMMSS(s.mi * 15 * 60) + ')', 'Walk fast, never jog downhill. Short quick steps on hills.', 'Hot spot? Stop and fix it now.'] },
+        fuel: RGR_FUEL.slice(0, 4).concat([RGR_FUEL_RUCK, RGR_FUEL[4]]) }
+    : { day: 'SATURDAY', focus: 'LONG RUN', time: '~' + Math.round(s.mi * 11 + 10) + ' MIN',
+        run: { title: 'LONG RUN — ' + s.mi + ' MI EASY', steps: [s.mi + ' miles easy. ' + rgrEasy(), 'Engine, not a test. Walk a minute when the heart rate climbs.'] },
+        fuel: RGR_FUEL.slice(0, 4).concat([RGR_FUEL_RUCK, RGR_FUEL[4]]) };
+  d.sunday = { day: 'SUNDAY', focus: 'OFF', time: '—', recovery: ['Off. No training.', 'Optional: 20-30 min walk', '10 min mobility: hips, ankles, thoracic spine', 'Feet check, lay out Monday\'s gear'] };
+  Object.keys(d).forEach(function(k){ d[k].week = wk; });
+  return d;
+}
+
+function opMaxesCard() {
+  const set = OP_FIELDS.some(function(f){ return opCfg[f.k]; });
+  let h = '<details class="rgr-numbers"' + (set && opCfg.start ? '' : ' open') + '><summary>// OPERATOR MAXES ' + (opCfg.start ? '— STARTS ' + opCfg.start : '— SET A START DATE') + '</summary><div class="rgr-num-grid">'
+    + '<label class="rgr-num"><span>START (WEEK 1 MONDAY)</span><input type="date" value="' + (opCfg.start || '') + '" onchange="saveOpCfg(\'start\', this)"><em>until it\'s set, the plan stays on the week you pick</em></label>';
+  OP_FIELDS.forEach(function(f) {
+    h += '<label class="rgr-num"><span>' + f.label + '</span><input inputmode="numeric" value="' + (opCfg[f.k] || '') + '" placeholder="' + opMax(f.k) + '" onchange="saveOpCfg(\'' + f.k + '\', this)"><em>lb' + (opCfg[f.k] ? '' : ' · using ' + opMax(f.k) + ' (pre-cut) until you enter one') + '</em></label>';
+  });
+  return h + '</div><div class="rgr-num-foot">Main lifts are figured from a training max of 90% of these. Enter real numbers after BCT — heavy percentages off an old max are how people get hurt. Run paces come from the 2-mile in Ship Prep.</div></details>';
+}
+
+function updateOpCards() {
+  const w = currentBlock + 1, wk = OP_WEEKS[currentBlock], v = OP_WAVES[currentBlock], s = OP_SAT[currentBlock];
+  document.getElementById('block-display').textContent = w;
+  document.getElementById('pct-display').textContent = wk.type === 'BUILD' ? v[2] + '%' : wk.type;
+  document.getElementById('progress-val').innerHTML = 'WEEK ' + w + ' <span>/ 12</span>';
+  document.getElementById('progress-bar').style.width = (w / 12 * 100) + '%';
+  document.getElementById('progress-card-2-label').textContent = '// main lifts';
+  document.getElementById('intensity-val').innerHTML = wk.type === 'TEST' ? 'TEST <span>1RM</span>' : v[1] + ' x ' + v[0] + ' <span>@ ' + v[2] + '%</span>';
+  document.getElementById('intensity-bar').style.width = (v[2] || 100) + '%';
+  document.getElementById('prog-card-3-label').textContent = '// saturday';
+  document.getElementById('prog-card-3-val').innerHTML = s.mi + ' <span>MI' + (s.ruck ? ' · ' + s.ruck + ' LB' : ' RUN') + '</span>';
+  document.getElementById('prog-card-3-bar').style.width = (s.mi / 10 * 100) + '%';
+}
+
+function renderOpWorkout() {
+  const w = currentBlock + 1, day = getOpData(w)[currentDay];
+  const content = document.getElementById('workout-content');
+  const prefix = 'op-' + currentBlock + '-' + currentDay;
+  let html = opMaxesCard();
+  html += '<div class="section"><div class="info-box">WEEK ' + w + ' · ' + day.week.tag + ' · ' + day.time + '<br><span style="color:var(--text-dim)">' + day.week.note + '</span></div></div>';
+  if (day.recovery) {
+    html += '<div class="section"><div class="section-label">// off day</div><div class="cooldown-items">'
+      + day.recovery.map(function(x){ return '<div class="cooldown-item">' + x + '</div>'; }).join('') + '</div></div>';
+  }
+  if (day.lifts) {
+    html += renderGymWarmup();
+    html += '<div class="section"><div class="section-label">// lift — power first, then strength</div>' + renderLiftTable(day.lifts, prefix, null) + '</div>';
+  }
+  (day.circuits || []).forEach(function(c, ci) {
+    html += '<div class="section"><div class="section-label">// ' + c.label + '</div>' + rgrList(c.items, prefix, 'c' + ci, c.title) + '<div class="rgr-num-foot">' + c.note + '</div></div>';
+  });
+  if (day.fuel) html += '<details class="rgr-numbers rgr-fuel"><summary>// FUEL + HYDRATE — read before you go</summary><div style="padding:0 12px 4px">' + rgrList(day.fuel, prefix, 'fuel', 'BEFORE · DURING · AFTER', true) + '</div></details>';
+  if (day.run) html += '<div class="section"><div class="section-label">// ' + day.run.title.toLowerCase() + '</div>' + rgrRunCard(day.run, prefix) + '</div>';
+  if (day.core) html += '<div class="section"><div class="section-label">// core</div>' + rgrList(day.core, prefix, 'core', 'CORE — 10 MIN') + '</div>';
+  if (day.pm) html += '<div class="section"><div class="section-label">// note</div><div class="info-box">' + day.pm.toUpperCase() + '</div></div>';
+  html += renderNotes(prefix);
+  content.innerHTML = html;
+  attachNotes(prefix);
+}
+
+// ============================================================
 // RENDER HELPERS
 // ============================================================
 
@@ -2115,8 +2317,9 @@ function renderBlockNav() {
 
 function updateProgressCards() {
   const b = BLOCKS[currentBlock];
-  document.getElementById('block-word').textContent = currentProgram === 'ranger' ? 'WEEK' : 'BLOCK';
+  document.getElementById('block-word').textContent = currentProgram === 'ranger' || currentProgram === 'op' ? 'WEEK' : 'BLOCK';
   if (currentProgram === 'ranger') { updateRgrCards(); return; }
+  if (currentProgram === 'op') { updateOpCards(); return; }
   document.getElementById('progress-card-2-label').textContent = '// intensity';
   document.getElementById('prog-card-3-label').textContent = currentProgram === 'bct' ? '// acft target' : '// long run';
   document.getElementById('block-display').textContent = b.num;
@@ -2138,6 +2341,7 @@ function updateProgressCards() {
 const PROGRAM_SUBS = {
   ranger: '// SHIP PREP — AFT 465+ — 15 WEEKS — OCT 12 → JAN 24 · BCT JAN 25',
   hybrid: '// HYBRID WARRIOR PROGRAM — 12-WEEK CYCLE',
+  op: '// OPERATOR — STRENGTH · POWER · TACTICAL CONDITIONING — 12 WEEKS (AFTER BCT)',
   bct: '// MUSCLE + — SIZE AND STRENGTH — 12-WEEK CYCLE (REWORK AFTER BCT)',
 };
 function syncProgTabs() {
@@ -2173,6 +2377,7 @@ function renderDayTabs() {
   const days = currentProgram === 'bct' ? BCT_DAYS : HYB_DAYS;
   const data = currentProgram === 'bct' ? getBCTData(BLOCKS[currentBlock])
     : currentProgram === 'ranger' ? getRgrData(currentBlock + 1)
+    : currentProgram === 'op' ? getOpData(currentBlock + 1)
     : getHybridData(BLOCKS[currentBlock]);
   const wrap = document.getElementById('day-tabs');
   wrap.innerHTML = days.map(d => {
@@ -2531,6 +2736,8 @@ function renderWorkout() {
     renderBCTWorkout();
   } else if (currentProgram === 'ranger') {
     renderRgrWorkout();
+  } else if (currentProgram === 'op') {
+    renderOpWorkout();
   } else {
     renderHybridWorkout();
   }
