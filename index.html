@@ -848,7 +848,7 @@ const PB_NAMES = { hybrid: 'HYBRID WARRIOR', op: 'BLACK OPS', fm: 'THE FORGE', r
 const PB_WEEKS = [
   { type: 'BUILD',  tag: 'BRIDGE WEEK', note: 'This week finishes the old layout. Hybrid Warrior starts Monday, Nov 9.' },
   { type: 'BUILD',  tag: 'HYBRID WARRIOR 1/2', note: 'Phase 1: balanced — 3–4 sets of 8–10, 90 sec rest. Sunday: InBody scan #1, morning, fasted.' },
-  { type: 'TEST',   tag: 'HYBRID WARRIOR 2/2 — CHECKPOINT', note: 'Monday: 2-mile time trial. Wednesday: plank max + sprint-drag-carry. Log them — every pace updates.' },
+  { type: 'TEST',   tag: 'HYBRID WARRIOR 2/2 — CHECKPOINT', note: 'Monday: 2-mile time trial. Wednesday: plank max. Log them — every pace updates.' },
   { type: 'DELOAD', tag: 'BLACK OPS 1/3 — THANKSGIVING', note: 'Phase 2: heavy and tactical — 3–6 reps, long rest, a finisher. No team practice this week: run solo, fewer sets.' },
   { type: 'BUILD',  tag: 'BLACK OPS 2/3', note: 'Full volume. Heavy sets with full rest, then the finisher. Easy days stay easy.' },
   { type: 'BUILD',  tag: 'BLACK OPS 3/3 — PEAK', note: 'Heaviest week of the plan. Sunday: InBody scan #2.' },
@@ -1367,9 +1367,9 @@ function getRgrData(w) {
   } else if (s.aft) {
     d.saturday = { day: 'SATURDAY', focus: 'MOCK AFT', time: '~90 MIN',
       run: { title: 'MOCK AFT — IN TEST ORDER', steps: [
-        'DEADLIFT (3RM): warm up, then 3 reps at 340 — stop. That\'s the max score; more is just risk.',
+        'DEADLIFT (3RM): hex bar if you can find one, otherwise a conventional barbell. Warm up, then 3 reps at 340 — stop. That\'s the max score; more is just risk.',
         'HAND-RELEASE PUSH-UPS: 2 min, strict. Log it.',
-        'SPRINT-DRAG-CARRY: one round for time. Log it.',
+        'SPRINT-DRAG-CARRY: only if Future Soldier PT has a sled and lanes set up — otherwise skip it and run the other four.',
         'PLANK: AFT form, hold until it breaks. Log it.',
         '2-MILE RUN: 8 laps, even splits. Log it.',
         'About 5 min between events. Every number goes in YOUR NUMBERS — next week trains whatever came up short.'] },
@@ -2162,7 +2162,7 @@ function pbPhaseDays(gw, ow, d) {
     const r = '90 SEC';
     monLifts = [pbL('BENCH PRESS', s, 8, light ? 'RPE 6' : 'RPE 7', 'Three reps left in the tank.', r), pbL('PULL-UPS', s, pu, 'BW', 'Dead hang, full range.', r),
       pbL('DB PUSH PRESS', 3, 10, 'RPE 7', '', r), pbL('ONE-ARM DB ROW', 3, '10 ea', 'RPE 7', '', r), pbL('FARMER CARRY', 3, '50m', '2x50', '', r)];
-    wedLifts = [pbL('TRAP BAR DEADLIFT', 4, 8, rgrDL(0.6), 'Smooth eights — the bar moves fast.', '2 MIN'), pbL('FRONT SQUAT', 3, 10, 'RPE 7', 'Upright torso.', r),
+    wedLifts = [pbL('HANG CLEAN → FRONT SQUAT', s, '3 + 3', 'RPE 7', 'One set = the hang cleans, then the front squats straight from the catch. Fast elbows.', r), pbL('DEADLIFT', 3, 8, 'RPE 7', 'Conventional barbell. Smooth eights, no grinding.', '2 MIN'),
       pbL('BULGARIAN SPLIT SQUAT', 3, '8 ea', 'DBs', '', r), pbL('KB SWINGS', 3, 15, '53', '', r), pbL('WEIGHTED PLANK', 3, '45 SEC', '25', 'AFT form.', '60 SEC')];
     tue = pbC('calisthenics a — balanced', (light ? 2 : 3) + ' ROUNDS · REST 60 SEC', [['PULL-UPS', '8'], ['PUSH-UPS', '20'], ['DIPS', '12'], ['INVERTED ROWS', '12'], ['HOLLOW HOLD', '30 sec']], 'Clean reps, steady pace. Bar, dip station or two benches.');
     thu = pbC('calisthenics b — home (35 kb · sand ball)', (light ? 2 : 3) + ' ROUNDS · REST 60 SEC', [['KB SWINGS', '20'], ['PUSH-UPS', '15'], ['GOBLET SQUAT', '15'], ['SAND BALL SLAMS', '12'], ['BURPEES', '10']], 'Log total time.');
@@ -2171,8 +2171,8 @@ function pbPhaseDays(gw, ow, d) {
     monLifts = [pbL('BENCH PRESS', light ? 3 : 5, 5, light ? 'RPE 6' : 'RPE 8', 'Two reps left. Full rest — this is strength, not cardio.', r), pbL('WEIGHTED PULL-UPS', light ? 3 : 5, 5, 'BW+', 'Add 5 lb when all five sets are clean.', r),
       pbL('PUSH PRESS', 4, 5, 'RPE 8', 'Dip, drive, lock out.', r), pbL('PENDLAY ROW', 4, 6, 'RPE 8', 'Bar back to the floor every rep.', '2 MIN')];
     monC = [pbC('tactical finisher', (light ? 2 : 3) + ' ROUNDS · REST 90 SEC', [['DB CLEAN + PRESS', '5 ea'], ['FARMER CARRY', '50m heavy'], ['BURPEES', '8']], 'Moving heavy things while you\'re tired — that\'s tactical conditioning.')];
-    wedLifts = [pbL('TRAP BAR DEADLIFT', light ? 3 : 5, 3, light ? '315' : '315-340', 'Ramp: 135×5, 225×3, 275×2, then work sets. Cap 340 — the AFT stops scoring there.', '3 MIN'),
-      pbL('FRONT SQUAT', 4, 5, 'RPE 8', '', r), pbL('WALKING LUNGES', 3, '8 ea', 'heavy DBs', '', '2 MIN'), pbL('WEIGHTED PLANK', 3, '45 SEC', '35', 'AFT form.', '60 SEC')];
+    wedLifts = [pbL('HANG CLEAN → FRONT SQUAT', light ? 3 : 5, '2 + 2', light ? 'RPE 6' : 'RPE 8', 'Heavy and explosive. ' + 'One set = the hang cleans, then the front squats straight from the catch. Fast elbows.'.slice(1, -1), r),
+      pbL('DEADLIFT', light ? 3 : 4, 4, light ? 'RPE 6' : 'RPE 8', 'Conventional barbell. Ramp up, two reps left. The AFT hex-bar test stops scoring around 340 — no need to chase more.', '3 MIN'), pbL('WALKING LUNGES', 3, '8 ea', 'heavy DBs', '', '2 MIN'), pbL('WEIGHTED PLANK', 3, '45 SEC', '35', 'AFT form.', '60 SEC')];
     tue = pbC('calisthenics a — strength', (light ? 3 : 4) + ' ROUNDS · REST 90 SEC', [['ARCHER PUSH-UPS', '6 ea'], ['CHIN-UPS', 'max minus 2'], ['PIKE PUSH-UPS', '8'], ['HANGING KNEE-TO-ELBOW', '10'], ['L-SIT', '15 sec']], 'Hard variations, low reps, real rest.');
     thu = pbC('calisthenics b — tactical (home)', (light ? 3 : 4) + ' ROUNDS · REST 90 SEC', [['KB CLEAN + PRESS', '5 ea'], ['BEAR CRAWL', '30 sec'], ['SAND BALL OVER SHOULDER', '10'], ['BURPEE BROAD JUMPS', '6'], ['SHOULDER TAPS', '20']], 'Fast transitions, quality reps.');
   } else if (ph === 'fm') {
@@ -2186,11 +2186,15 @@ function pbPhaseDays(gw, ow, d) {
     thu = pbC('calisthenics b — kb complex (home)', (light ? 2 : 4) + ' ROUNDS · REST 75 SEC', [['KB COMPLEX', '6 ea side: swing → clean → press → front squat, no setting it down'], ['PUSH-UPS', '15'], ['SAND BALL RUSSIAN TWISTS', '20']], 'The complex is one set. Grip and shoulders burn — that\'s the point.');
   } else {
     const ship = gw === 11, mock = gw === 9, sharp = gw === 10;
-    const rounds = ship ? 2 : mock ? 3 : sharp ? 4 : 5;
+    const rounds = ship || mock ? 2 : 3;
+    if (!ship) monLifts = [pbL('BENCH PRESS', mock ? 2 : sharp ? 3 : 4, mock || sharp ? 5 : 6, mock ? 'RPE 6' : 'RPE 8', mock ? 'Light — the mock is Saturday.' : 'Keeps the press strong while the circuits take over.', '90 SEC', 'U', 'first'),
+      pbL('WEIGHTED PULL-UPS', mock ? 2 : sharp ? 3 : 4, 5, mock ? 'BW' : 'BW+', '', '90 SEC', 'U', 'last'),
+      pbL('DB PUSH PRESS', mock ? 2 : 3, 8, mock ? 'RPE 6' : 'RPE 8', '', '60 SEC')];
     monC = [pbC('hiit — emom (every minute on the minute)', 'EMOM ' + rounds * 4 + ' MIN · ' + rounds + ' ROUNDS' + (ship || mock ? ' · EASY' : ''),
       [['MIN 1 · DB THRUSTERS', '12'], ['MIN 2 · RENEGADE ROWS', '5 ea'], ['MIN 3 · KB SWINGS', '20'], ['MIN 4 · BURPEES', ship || mock ? '6' : '12']], 'Rest is whatever is left of the minute. Missed the minute? Drop 2 reps next round.')];
     if (gw === 8 || sharp) {
-      wedLifts = [pbL('TRAP BAR DEADLIFT', sharp ? 2 : 3, 3, sharp ? '315' : '340', gw === 8 ? 'AFT rehearsal: the mock is in two weeks. Ramp, then crisp triples at 340.' : 'Groove only.', '3 MIN')];
+      wedLifts = [pbL('DEADLIFT', sharp ? 2 : 3, 3, sharp ? 'RPE 7' : 'RPE 8', gw === 8 ? 'Conventional. AFT rehearsal — the mock is in two weeks. Crisp triples.' : 'Groove only.', '3 MIN'),
+        pbL('HANG CLEAN → FRONT SQUAT', sharp ? 6 : 8, sharp ? '1 + 1' : '2 + 2', 'MOD', 'EMOM — one set at the top of every minute. Speed over load.', 'REST OF THE MINUTE')];
       wedC = [pbC('hiit — tabata lower', (sharp ? 4 : 8) + ' ROUNDS EACH · 20 SEC ON / 10 SEC OFF · 1 MIN BETWEEN MOVES', [['GOBLET SQUATS', 'max'], ['JUMP LUNGES', 'max'], ['KB SWINGS', 'max'], ['MOUNTAIN CLIMBERS', 'max']], 'Count reps on round 1, keep every round within 2 of it.')];
     }
     if (!mock && !ship) {
@@ -2198,18 +2202,24 @@ function pbPhaseDays(gw, ow, d) {
       thu = pbC('calisthenics b — amrap (home)', 'AMRAP ' + (sharp ? 15 : 20) + ' MIN · LOG ROUNDS', [['KB SWINGS', '20'], ['PUSH-UPS', '15'], ['SAND BALL SLAMS', '15'], ['BURPEES', '10'], ['SIT-UPS', '20']], 'Steady pace you can hold to the end.');
     }
   }
-  const label = { hybrid: 'lift a — hybrid · 3–4 × 8–10 · 90 sec rest', op: 'lift a — black ops · heavy · 2–3 min rest', fm: 'lift a — the forge · supersets · 60–90 sec rest', ranger: 'weight room — plank, then hiit' }[ph];
-  d.monday = Object.assign({}, d.monday, { v3: true, focus: (d.monday.focus.indexOf('SOLO') === 0 ? 'SOLO' : 'TRACK') + (ph === 'ranger' ? ' + HIIT' : ' + LIFT A'),
+  const label = { hybrid: 'lift a — hybrid · 3–4 × 8–10 · 90 sec rest', op: 'lift a — black ops · heavy · 2–3 min rest', fm: 'lift a — the forge · supersets · 60–90 sec rest', ranger: 'lift a — upper strength, then hiit' }[ph];
+  d.monday = Object.assign({}, d.monday, { v3: true, focus: (d.monday.focus.indexOf('SOLO') === 0 ? 'SOLO' : 'TRACK') + (ph === 'ranger' ? ' + UPPER/HIIT' : ' + LIFT A'),
     liftLabel: label, lifts: (plank ? [plank] : []).concat(monLifts), circuits: monC });
   if (tue) d.tuesday = { day: 'TUESDAY', focus: 'CALISTHENICS A', time: '~40 MIN', v3: true, circuits: [tue],
     run: d.tuesday.run, pm: d.tuesday.run ? 'Calisthenics at the bar first; the easy run with the kids is optional.' : 'At home or a park — no gym needed.' };
   if (wedLifts && !d.wednesday.liftLabel.match(/test|just move/)) d.wednesday = Object.assign({}, d.wednesday, { v3: true, focus: d.wednesday.focus.replace('LOWER', 'LIFT B'),
-    liftLabel: label.replace('lift a', 'lift b').replace('plank, then hiit', 'heavy triples, then tabata'), lifts: wedLifts, circuits: wedC });
+    liftLabel: label.replace('lift a', 'lift b').replace('upper strength, then hiit', 'deadlift + clean complex, then tabata'), lifts: wedLifts, circuits: wedC });
   if (thu && d.thursday.circuits) d.thursday = Object.assign({}, d.thursday, { v3: true, focus: 'CALISTHENICS B', circuits: [thu] });
 }
 function getPbData(gw) {
   const ow = gw + 4, d = getRgrData(ow);
-  if (gw > 0) pbPhaseDays(gw, ow, d);
+  if (gw > 0) {
+    pbPhaseDays(gw, ow, d);
+    // No sprint-drag-carry in the Road to BCT (Zach, Nov 9: no sled or lanes to set up, and trap bars are hard to find)
+    d.wednesday = Object.assign({}, d.wednesday, { sdc: null });
+    if (gw === 2) Object.assign(d.wednesday, { focus: 'CHECKPOINT — PLANK MAX', time: '~40 MIN',
+      run: { title: 'EASY RUN — 20 MIN', steps: ['20 min easy with the team. ' + rgrEasy(), 'Then the plank max.'] } });
+  }
   Object.keys(d).forEach(function(k){ d[k].week = PB_WEEKS[gw]; });
   return d;
 }
