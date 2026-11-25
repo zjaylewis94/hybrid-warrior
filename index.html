@@ -725,6 +725,7 @@
   .pf-sub { font-family: 'Share Tech Mono', monospace; font-size: 0.7rem; letter-spacing: 1.5px; color: var(--text-dim); margin-top: 4px; }
   .pf-close { background: none; border: 1px solid var(--border); color: var(--text); border-radius: 6px; font-size: 1rem; padding: 4px 10px; cursor: pointer; }
   .pf-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+  .pf-tile.pf-goal { grid-column: 1 / -1; border-left: 3px solid var(--yellow); }
   .pf-tile { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; }
   .pf-tile span { display: block; font-family: 'Share Tech Mono', monospace; font-size: 0.6rem; letter-spacing: 2px; color: var(--text-dim); }
   .pf-tile b { display: block; font-family: 'Bebas Neue', sans-serif; font-weight: normal; font-size: 1.6rem; letter-spacing: 1px; color: var(--white); line-height: 1.1; }
@@ -1017,6 +1018,7 @@ const RGR_NUM_FIELDS = [
   { k: 'deadlift', label: '3RM DEADLIFT (LB)',     hint: 'trap bar · the AFT stops counting around 340', ph: '415' },
   { k: 'ruck4',    label: '4-MILE RUCK (35 LB)',   hint: 'Week 1: 3.87 mi in 56:27, 37 lb, 640 ft of hills → 58:20 for 4 mi · standard 15:00/mi = 60:00', ph: '64:00' },
   { k: 'chins',    label: 'PULL-UPS (STRICT)',     hint: 'max, dead hang · Ranger standard 6 — the next peak', ph: '—' },
+  { k: 'goal',     label: 'POST-AIT GOAL',         hint: 'weight · body fat — the long-range target (set Nov 25)', ph: '230 lb · 12%' },
   { k: 'fourMile', label: '4-MILE RUN (WK 1)',     hint: 'estimate from your 2-mile (Oct 17)', ph: '36:00', onlyIfSet: true },
   { k: 'fiveMile', label: '5-MILE RUN',            hint: 'mm:ss · Ranger/SF later', ph: '44:00', onlyIfSet: true },
   { k: 'pushups',  label: 'PUSH-UPS (2 MIN)',      hint: 'reps', ph: '—', onlyIfSet: true },
@@ -1025,7 +1027,7 @@ const RGR_NUM_FIELDS = [
 // What Zach reported (Oct 17–18). They fill any field he hasn't typed himself; his own entry always wins.
 //   2-mile: ~8:30/mi for 2 miles (Oct 17). Plank 2:06, SDC 1:34, HRP 61, deadlift 415x3: September tests.
 //   Ruck: 3.87 mi in 56:27 at 37 lb with 640 ft of climbing, stretched to 4 mi.
-const RGR_NUM_SEED = { twoMile: '17:00', plank: '2:06', sdc: '1:34', hrp: '61', deadlift: '415', fourMile: '37:00', ruck4: '58:20' };
+const RGR_NUM_SEED = { goal: '230 lb · 12%', twoMile: '17:00', plank: '2:06', sdc: '1:34', hrp: '61', deadlift: '415', fourMile: '37:00', ruck4: '58:20' };
 let rgrNum = {};
 try { rgrNum = JSON.parse(localStorage.getItem('rgr-numbers') || '{}'); } catch(e) { rgrNum = {}; }
 Object.keys(RGR_NUM_SEED).forEach(function(k){ if (!rgrNum[k]) rgrNum[k] = RGR_NUM_SEED[k]; });
@@ -1608,7 +1610,7 @@ function rgrNumFields() {
   RGR_NUM_FIELDS.forEach(function(f) {
     if (f.onlyIfSet && !rgrNum[f.k]) return;
     h += '<label class="rgr-num"><span>' + f.label + '</span>'
-      + '<input value="' + (rgrNum[f.k] || '') + '" placeholder="' + f.ph + '" onchange="saveRgrNum(\'' + f.k + '\', this)" inputmode="' + (/Mile|circuit|ruck|plank|sdc/.test(f.k) ? 'text' : 'numeric') + '">'
+      + '<input value="' + (rgrNum[f.k] || '') + '" placeholder="' + f.ph + '" onchange="saveRgrNum(\'' + f.k + '\', this)" inputmode="' + (/Mile|circuit|ruck|plank|sdc|goal/.test(f.k) ? 'text' : 'numeric') + '">'
       + '<em>' + f.hint + '</em></label>';
   });
   return h + '</div><div class="rgr-num-foot">Paces, plank holds and lift loads come from these — change one and the whole plan updates. AFT cutoffs are approximate; check the official 32-36 chart.</div>';
@@ -2310,6 +2312,12 @@ function renderLiftTable(lifts, prefix, tagFn) {
 function openProfile() { renderProfile(); document.getElementById('profile').hidden = false; document.body.style.overflow = 'hidden'; }
 function closeProfile() { document.getElementById('profile').hidden = true; document.body.style.overflow = ''; }
 document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeProfile(); });
+// The long-range goal (YOUR NUMBERS › POST-AIT GOAL), with pounds to go from the last Sunday check-in
+function goalTile(weight) {
+  const g = rgrNum.goal || '', gw = parseFloat(g), cw = parseFloat(weight);
+  const sub = gw && cw ? (cw > gw ? Math.round((cw - gw) * 10) / 10 + ' lb to go from your last check-in' : 'reached — set the next one') : 'log a Sunday weight to see how far';
+  return '<div class="pf-tile pf-goal"><span>POST-AIT GOAL</span><b>' + (g || '—') + '</b><em>' + sub + '</em></div>';
+}
 function renderProfile() {
   const p = rgrPaces(), toShip = Math.round((PB_SHIP - pbToday()) / 86400000);
   let weight = '—', waist = '';
@@ -2325,6 +2333,7 @@ function renderProfile() {
     + tile('PLANK', rgrNum.plank || '—', 'target 3:00+')
     + tile('WEIGHT', weight + (weight !== '—' ? ' lb' : ''), waist ? 'waist ' + waist + ' in' : 'Sunday check-in')
     + tile('PULL-UPS', rgrNum.chins && rgrNum.chins !== '—' ? rgrNum.chins : '—', 'Ranger standard 6')
+    + goalTile(weight)
     + '</div>';
   if (p) h += '<div class="pf-line">Easy ' + fmtMMSS(p.easyLo) + '–' + fmtMMSS(p.easyHi) + '/mi · tempo ' + fmtMMSS(p.tempoMi) + '/mi · goal pace ' + fmtMMSS(p.goalMi) + '/mi · AFT target ' + fmtMMSS(TWO_MILE_TARGET / 2) + '/mi</div>';
   h += '<div class="pf-sec">YOUR NUMBERS</div>' + rgrNumFields();
